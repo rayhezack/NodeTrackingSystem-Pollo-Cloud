@@ -88,8 +88,9 @@ export class D1RecordStore {
     await this.observe(instance);
     return records.map((record) => {
       const id = `d1_${crypto.randomUUID()}`;
-      this.changes.set(`${instance}:${id}`, { instance, id, fields: { ...record, ...(/Workbench$|^workbench$/.test(instance) ? { 创建时间: Date.now() } : {}) }, patch: record });
-      return { id, record };
+      const fields = localMetadata(instance, record, true);
+      this.changes.set(`${instance}:${id}`, { instance, id, fields, patch: record });
+      return { id, record: fields };
     });
   }
   async update(instance: string, records: BitableRecord[]): Promise<BitableRecord[]> {
@@ -97,7 +98,7 @@ export class D1RecordStore {
     for (const row of records) {
       const previous = await this.get(instance, row.id);
       if (!previous) throw new Error(`记录不存在：${row.id}`);
-      const record = { ...previous.record, ...row.record };
+      const record = localMetadata(instance, { ...previous.record, ...row.record }, false);
       this.changes.set(`${instance}:${row.id}`, { instance, id: row.id, fields: record, patch: { ...(this.changes.get(`${instance}:${row.id}`)?.patch || {}), ...row.record } });
       result.push({ id: row.id, record });
     }
@@ -156,4 +157,15 @@ function matchesFilter(fields: Record<string, unknown>, filter?: BitableFilter):
   if (!filter?.conditions.length) return true;
   const values = filter.conditions.map((condition) => condition.operator === 'contains' ? containsCell(fields[condition.field_name],condition.value[0]) : recordCellText(fields[condition.field_name]) === condition.value[0]);
   return filter.conjunction === 'or' ? values.some(Boolean) : values.every(Boolean);
+}
+
+/** Base system columns are calculated locally; never send them in an outbox patch. */
+function localMetadata(instance: string, fields: Record<string, unknown>, created: boolean): Record<string, unknown> {
+  const now = Date.now();
+  const result = { ...fields, ...(created ? { 创建时间: now } : {}), 更新时间: now };
+  if (instance === 'paramDetail' || instance === 'webParamDetail') {
+    const evtId = recordCellText(fields.evt_id), name = recordCellText(fields['参数名']);
+    return { ...result, 设计参数主键: evtId && name ? `${evtId}.${name}` : '' };
+  }
+  return result;
 }

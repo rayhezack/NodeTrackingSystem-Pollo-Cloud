@@ -56,4 +56,16 @@ describe('D1 authoritative record store using real SQLite transactions', () => {
     expect((await new D1RecordStore(db).search('webWorkbench',{filter})).total).toBe(1);
   });
 
+  it('recalculates local system columns without exporting Base formula or timestamp fields', async () => {
+    const db = database(); await ensureRecordStore(db);
+    await db.prepare('INSERT INTO tracking_rows(instance,id,fields) VALUES(?,?,?)').bind('webParamDetail','base-param',JSON.stringify({evt_id:[{text:'event'}],参数名:[{text:'before'}],设计参数主键:'event.before',创建时间:10,更新时间:20})).run();
+    const store = new D1RecordStore(db);
+    const [updated] = await store.update('webParamDetail',[{id:'base-param',record:{参数名:'after'}}]);
+    expect(updated.record['设计参数主键']).toBe('event.after');
+    expect(updated.record['创建时间']).toBe(10);
+    expect(Number(updated.record['更新时间'])).toBeGreaterThan(20);
+    await store.commit();
+    expect(JSON.parse((await db.prepare('SELECT payload FROM tracking_sync_outbox').first<{payload:string}>())!.payload)).toEqual({参数名:'after'});
+  });
+
 });
