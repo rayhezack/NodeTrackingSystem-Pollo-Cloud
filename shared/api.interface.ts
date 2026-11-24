@@ -759,3 +759,37 @@ export interface DataSyncStatus {
   errors: { id: number; instance: string; record_id: string; status: string; error: string; attempts: number }[];
   canManage: boolean;
 }
+
+/** Official-library status values an admin may set through governance; deprecation goes through a 废弃 requirement instead. */
+export const OFFICIAL_GOVERNANCE_STATUSES = ['待开发', '待验收', '已验收', '已上线', '待治理'] as const;
+export const OFFICIAL_GOVERNANCE_LIFECYCLES = ['需求录入', '埋点设计', '评审通过', '埋点开发', '数据验收', '上线监控', '稳定归档'] as const;
+
+export interface OfficialGovernanceItem {
+  evtId: string;
+  status?: (typeof OFFICIAL_GOVERNANCE_STATUSES)[number];
+  lifecycleStatus?: (typeof OFFICIAL_GOVERNANCE_LIFECYCLES)[number];
+  /** Why this change is made; written to 最近评审记录 with date and operator. */
+  note: string;
+}
+
+export interface OfficialGovernanceRequest {
+  source: TrackingSource;
+  dryRun: boolean;
+  items: OfficialGovernanceItem[];
+}
+
+export interface OfficialGovernanceChange {
+  evtId: string;
+  recordId: string;
+  before: { status: string; lifecycleStatus: string };
+  after: { status: string; lifecycleStatus: string };
+  reviewNote: string;
+}
+
+export interface OfficialGovernanceResponse {
+  source: TrackingSource;
+  dryRun: boolean;
+  changes: OfficialGovernanceChange[];
+  /** Items whose status and lifecycle already match the requested values; nothing is written for them. */
+  unchanged: string[];
+}

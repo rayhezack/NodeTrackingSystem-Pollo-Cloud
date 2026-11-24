@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Button } from '@client/src/components/ui/button';
 import { axiosForBackend } from '@client/src/api/http';
 import type { DataSyncStatus } from '@shared/api.interface';
+import { OfficialGovernancePanel } from './OfficialGovernancePanel';
 
 export default function DataSyncPage() {
   const [status, setStatus] = useState<DataSyncStatus | null>(null);
@@ -31,6 +32,7 @@ export default function DataSyncPage() {
     <div className="mt-4 flex flex-wrap gap-6 text-sm">{status?.queue.map((row) => <p key={row.status}>{({pending:'待同步',synced:'已同步',failed:'失败',processing:'执行中或结果待核对'} as Record<string,string>)[row.status] || row.status}：{row.count}</p>)}{status && !status.queue.length && <p className="text-muted-foreground">暂无同步待办</p>}</div>
     {!!status?.errors.length && <div className="mt-4 space-y-3">{status.errors.map((row) => <div key={row.id} className="break-words text-sm text-destructive"><p>任务 {row.id} · {row.instance} · {row.error || '执行结果待核对，请管理员核对 Base 记录，禁止盲目重试新增操作'}</p>{status.canManage && row.status === 'processing' && row.instance !== '__notification' && <div className="mt-2 flex gap-2"><Input aria-label={`任务 ${row.id} 对应的 Base 记录 ID`} placeholder="核对后的 Base 记录 ID（rec…）" value={baseIds[row.id] || ''} onChange={(event) => setBaseIds((previous) => ({ ...previous, [row.id]: event.target.value }))} /><Button variant="outline" disabled={busy || !baseIds[row.id]} onClick={() => void run('reconcile', row.id)}>关联已有记录并恢复</Button></div>}</div>)}</div>}</section>
     <section className="rounded-xl border border-border bg-card p-5"><h2 className="text-sm font-semibold">已迁移数据</h2><p className="mt-2 text-xs text-muted-foreground">{status?.migration ? `已读取 ${status.migration.count} 条记录，已完成 ${status.migration.index}/16 张表` : '尚未导入'}。迁移全部完成后才启用 D1。后台每五分钟恢复同步，积压期间 Base 查询可能滞后。</p><dl className="mt-4 grid grid-cols-1 gap-x-8 sm:grid-cols-2">{status?.tables.map((row) => <div key={row.instance} className="flex justify-between border-b border-border py-2 text-sm"><dt>{tableNames[row.instance] || row.instance}</dt><dd className="tabular-nums">{row.count}</dd></div>)}</dl></section>
+    {status?.canManage && status.mode === 'd1' && <OfficialGovernancePanel onApplied={() => void load()} />}
   </div>;
 }
 
