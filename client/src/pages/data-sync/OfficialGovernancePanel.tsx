@@ -39,7 +39,7 @@ export function OfficialGovernancePanel({ onApplied }: { onApplied: () => void }
 
   return <section className="rounded-xl border border-border bg-card p-5">
     <h2 className="text-sm font-semibold">正式库状态治理</h2>
-    <p className="mt-2 text-sm leading-relaxed text-muted-foreground">只改正式事件的「状态」「生命周期状态」，原因会写入「最近评审记录」。废弃请走废弃需求单。先预览，确认差异后再执行；整批校验，有一条不通过就全部不写。</p>
+    <p className="mt-2 text-sm leading-relaxed text-muted-foreground">只改正式事件的「状态」「生命周期状态」，不改其他字段；原因说明只在预览里显示，请自行留档。废弃请走废弃需求单。先预览，确认差异后再执行；整批校验，有一条不通过就全部不写。</p>
     <div className="mt-4 flex flex-wrap items-center gap-3">
       <NativeSelect aria-label="正式库" value={source} onChange={(event) => setSource(event.target.value as TrackingSource)}>
         <NativeSelectOption value="app">App 正式库</NativeSelectOption>
@@ -56,7 +56,7 @@ export function OfficialGovernancePanel({ onApplied }: { onApplied: () => void }
     {preview && previewIsCurrent && <div className="mt-4 overflow-x-auto">
       <p className="mb-2 text-xs text-muted-foreground">预览：{preview.result.changes.length} 条将修改{preview.result.unchanged.length ? `，${preview.result.unchanged.length} 条已是目标值（${preview.result.unchanged.join('、')}）` : ''}</p>
       <table className="w-full text-left text-sm">
-        <thead className="text-xs text-muted-foreground"><tr><th className="py-2 pr-4 font-medium">事件</th><th className="py-2 pr-4 font-medium">状态</th><th className="py-2 pr-4 font-medium">生命周期</th><th className="py-2 font-medium">写入的评审记录</th></tr></thead>
+        <thead className="text-xs text-muted-foreground"><tr><th className="py-2 pr-4 font-medium">事件</th><th className="py-2 pr-4 font-medium">状态</th><th className="py-2 pr-4 font-medium">生命周期</th><th className="py-2 font-medium">原因说明（不写入正式库）</th></tr></thead>
         <tbody>{preview.result.changes.map((change) => <tr key={change.evtId} className="border-t border-border align-top">
           <td className="py-2 pr-4 font-mono text-xs">{change.evtId}</td>
           <td className="py-2 pr-4 whitespace-nowrap">{change.before.status === change.after.status ? change.after.status : `${change.before.status || '空'} → ${change.after.status}`}</td>
