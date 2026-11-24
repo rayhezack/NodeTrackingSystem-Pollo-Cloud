@@ -304,7 +304,8 @@ export default function RelatedEventsPanel({
                     paddingBottom: 0,
                   }}
                   transition={{ duration: reduceMotion ? 0 : 0.18 }}
-                  className={`group flex min-h-16 min-w-0 items-center gap-1 rounded-lg px-2 py-2 ${deleting ? 'bg-primary/10 text-foreground ring-1 ring-inset ring-primary/20' : 'text-foreground hover:bg-muted/70'}`}
+                  data-selected={event.isCurrent || undefined}
+                  className={`group flex min-h-16 min-w-0 items-center gap-1 rounded-lg px-2 py-2 transition-colors ${deleting ? 'bg-primary/10 text-foreground ring-1 ring-inset ring-primary/20' : event.isCurrent ? 'bg-primary/10 text-foreground shadow-sm ring-1 ring-inset ring-primary/20' : 'text-foreground hover:bg-muted/70'}`}
                 >
                   {deleting ? (
                     <div
@@ -361,10 +362,10 @@ export default function RelatedEventsPanel({
                         }}
                         className="min-w-0 flex-1 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                       >
-                        <div className="truncate font-mono text-xs font-medium">
+                        <div className={`truncate font-mono text-xs ${event.isCurrent ? 'font-semibold text-primary' : 'font-medium'}`}>
                           {event.evtId || '待填写 evt_id'}
                         </div>
-                        <div className="mt-1 truncate text-xs text-muted-foreground">
+                        <div className={`mt-1 truncate text-xs ${event.isCurrent ? 'text-foreground' : 'text-muted-foreground'}`}>
                           {event.eventName || '未命名事件'}
                         </div>
                         <div className="mt-1 text-xs text-muted-foreground">
