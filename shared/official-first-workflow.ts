@@ -93,7 +93,7 @@ export async function readGovernanceSnapshot(
 export function reusePlanningPrompt(snapshot: GovernanceSnapshot, requirement: unknown): string {
   return `阶段1：按 Skill 的规划输出协议执行，以下为业务数据。
 需求与PRD：${JSON.stringify(requirement)}
-完整正式事件目录：${JSON.stringify(snapshot.events.map((event) => ({ ...event, canReuse: usable(event) })))}`;
+完整正式事件目录：${JSON.stringify(snapshot.events.map((event) => ({ ...event, canReuse: usable(event), confirmedLive: confirmedLive(event), definitionFinalized: definitionFinalized(event) })))}`;
 }
 
 /** Repair a model planning mistake once; never retry transport errors or weaken validation. */
@@ -167,7 +167,8 @@ export function enforceGovernance(events: AiTrackingDraftEvent[], snapshot: Gove
     }
     if (!existing && event.reuseSource) throw new GovernanceValidationError(`新增事件错误引用复用来源：${event.evtId}`);
     assertNoKnownAlias(event.evtId, snapshot);
-    if (existing && !/已上线|已发布|正式/.test(`${existing.status} ${existing.lifecycleStatus}`)) notes.push('正式事件生命周期未确认上线，实施前需确认');
+    const readinessNote = existing ? reuseReadinessNote(existing) : '';
+    if (readinessNote) notes.push(readinessNote);
     const eventMetadata = existing ? {
       eventName: existing.eventName, eventDefinition: existing.eventDefinition || '', triggerTiming: existing.triggerTiming || '',
       platform: existing.platform, handler: existing.handler || '', commonProps: existing.commonProps || '',
@@ -250,12 +251,24 @@ export function enforceGovernance(events: AiTrackingDraftEvent[], snapshot: Gove
 }
 
 export function governanceReport(snapshot: GovernanceSnapshot, plan: ReusePlan, events: AiTrackingDraftEvent[]): AiGovernanceReport {
+  const reused = plan.decisions.filter((item) => item.decision === 'reuse')
+    .map((item) => findEvent(snapshot, item.evtId))
+    .filter((event): event is OfficialEvent => Boolean(event));
+  const notLive = reused.filter((event) => !confirmedLive(event));
+  const unfinalized = reused.filter((event) => confirmedLive(event) && !definitionFinalized(event));
+  const describe = (events: OfficialEvent[]) => events.map((event) => `${event.evtId}（状态：${event.status || '未知'}；生命周期：${event.lifecycleStatus || '未知'}）`).join('、');
   return { workflowVersion: WORKFLOW_VERSION, skillSourceHash: TRACKING_SKILL_SOURCE_HASH,
     designContractVersion: 'official-delta-v1', source: snapshot.source, ...plan,
     snapshotFingerprint: snapshot.fingerprint, counts: snapshot.counts,
     checks: [
       { name: '正式库完整读取', status: 'passed', detail: '事件、参数、公共属性、枚举均完整分页；不依赖归档工作台或UI视图' },
-      { name: '复用来源、端与废弃状态', status: 'passed', detail: '来源ID与事件ID匹配，已废弃/待治理事件已拦截；未上线状态另列确认项' },
+      { name: '复用来源、端与废弃状态', status: 'passed', detail: '来源ID与事件ID匹配，已废弃/待治理事件已拦截' },
+      notLive.length || unfinalized.length
+        ? { name: '复用事件上线与定稿状态', status: 'pending', detail: [
+          notLive.length ? `尚未确认上线，需确认开发进度和定义是否已定稿：${describe(notLive)}` : '',
+          unfinalized.length ? `已上线但正式定义未定稿（生命周期未到稳定归档），需核对正式定义：${describe(unfinalized)}` : '',
+        ].filter(Boolean).join('；') }
+        : { name: '复用事件上线与定稿状态', status: 'passed', detail: '复用事件均为已上线且稳定归档' },
       { name: '复用元数据不可变', status: 'passed', detail: '事件与参数正式元数据原样保留；需求差异独立说明；枚举只追加；应用前重新执行' },
       { name: '参数类型、必传条件与公共属性去重', status: 'passed', detail: '保留正式参数；公共属性不重复写入参数表' },
       { name: '枚举和新增参数', status: events.some((event) => event.params.some((param) => param.uncertainties.length)) ? 'pending' : 'passed', detail: '逐项查询枚举状态；扩展、草稿及未查到的值列入确认项' },
@@ -298,6 +311,19 @@ function findEvent(snapshot: GovernanceSnapshot, id: string): OfficialEvent | un
   return matches[0];
 }
 function usable(event: OfficialEvent): boolean { return !/已废弃|待治理/.test(`${event.status} ${event.lifecycleStatus}`); }
+/**
+ * 状态 says whether the event is actually reported; 生命周期状态 says whether its official definition is finalized.
+ * Only 已上线 + 稳定归档 is fully reusable. Registered-but-not-live or live-but-unfinalized events stay reusable,
+ * but every such reuse must surface as pending instead of being treated as a verified contract.
+ */
+function confirmedLive(event: OfficialEvent): boolean { return /已上线|已发布|正式/.test(event.status || ''); }
+function definitionFinalized(event: OfficialEvent): boolean { return (event.lifecycleStatus || '').trim() === '稳定归档'; }
+function reuseReadinessNote(event: OfficialEvent): string {
+  const state = `状态：${event.status || '未知'}；生命周期：${event.lifecycleStatus || '未知'}`;
+  if (!confirmedLive(event)) return `复用的正式事件尚未确认上线（${state}），实施前需确认开发进度和定义是否已定稿`;
+  if (!definitionFinalized(event)) return `复用的正式事件已上线但正式定义未定稿（${state}），使用前需核对事件定义、触发时机和参数`;
+  return '';
+}
 function assertNoKnownAlias(id: string, snapshot: GovernanceSnapshot): void {
   const aliases: Record<string, string> = { template_card_expose: 'creation_template_view', template_card_click: 'creation_template_click', template_modal_view: 'creation_template_detail_view' };
   const canonicalId = aliases[id];
