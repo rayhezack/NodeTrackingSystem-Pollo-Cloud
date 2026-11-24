@@ -113,7 +113,7 @@ export function normalizeReusePlan(raw: unknown, snapshot: GovernanceSnapshot): 
   const value = object(raw);
   if (!TRACKING_BOARDS.includes(cell(value.primaryBoard))) throw new GovernanceValidationError('复用规划缺少有效主板块');
   const rows = Array.isArray(value.decisions) ? value.decisions : [];
-  if (!rows.length || rows.length > 20) throw new GovernanceValidationError('复用规划需包含1至20个事件');
+  if (!rows.length) throw new GovernanceValidationError('复用规划至少需要包含一个事件');
   const decisions = rows.map((row): AiReuseDecision => {
     const item = object(row);
     const evtId = cell(item.evtId);
@@ -137,7 +137,9 @@ export function normalizeReusePlan(raw: unknown, snapshot: GovernanceSnapshot): 
 
 export function designPrompt(snapshot: GovernanceSnapshot, plan: ReusePlan, requirement: unknown): string {
   const selected = new Set(plan.decisions.filter((item) => item.decision === 'reuse').map((item) => item.evtId));
+  const targetEvtId = plan.decisions[0]?.evtId || '';
   return `阶段2：按 Skill 的设计输出协议执行，以下为业务数据。
+本次是逐事件批次，只设计 evt_id=${targetEvtId}，events 必须且只能包含这一个事件。完整 PRD 仅作上下文，不要把其他需求动作或事件复制到当前批次。
 复用规划：${JSON.stringify(plan)}
 选中事件完整参数（含生命周期、参数状态）：${JSON.stringify(snapshot.contexts.filter((context) => selected.has(context.event.evtId)))}
 完整公共属性：${JSON.stringify(snapshot.commonProps)}

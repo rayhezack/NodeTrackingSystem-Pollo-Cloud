@@ -191,20 +191,37 @@ describe('AI 埋点草稿', () => {
     expect(tracking.applyAiDraftEvents).not.toHaveBeenCalled();
   });
 
-  it('应拒绝超过单次上限的模型草稿，避免拖垮 Base 批量写入', async () => {
-    const { service, model } = createFixture();
-    model.generateJson.mockResolvedValueOnce(plan);
-    model.generateJson.mockResolvedValue({
-      events: Array.from({ length: 21 }, (_, index) => ({
-        evtId: `event_${index + 1}`,
-        eventName: `事件 ${index + 1}`,
-        params: [],
-      })),
+  it('逐事件生成超过20个事件和400个参数时仍完整返回草稿', async () => {
+    const { service, tracking, model } = createFixture();
+    const largePlan = { primaryBoard: 'Agent', decisions: Array.from({ length: 21 }, (_, index) => ({
+      evtId: `home_agent_event_${index + 1}`, decision: 'new', reason: '需求需要记录该动作', comparedEventIds: [],
+    })) };
+    model.generateJson.mockImplementation(async (messages: { content: string }[]) => {
+      const prompt = messages[1].content;
+      if (prompt.startsWith('阶段1')) return largePlan;
+      const batchPlan = JSON.parse(prompt.split('复用规划：')[1].split('\n')[0]) as typeof largePlan;
+      const evtId = batchPlan.decisions[0].evtId;
+      return { events: [{
+        evtId,
+        eventName: `事件 ${evtId}`,
+        eventDefinition: '用户执行对应操作',
+        triggerTiming: '操作生效时',
+        metricScenario: '统计使用情况',
+        priority: 'P1', platform: 'iOS、Android', handler: '客户端',
+        params: Array.from({ length: 20 }, (_, index) => ({
+          paramName: `param_${index}`, paramType: 'STRING', requiredRule: '非必传',
+          definition: `参数${index}`, example: `value_${index}`,
+        })),
+      }] };
     });
 
-    await expect(
-      service.generateDraft('app:rec_1', { actorId: 'actor_1' }),
-    ).rejects.toThrow('单次最多生成 20 个埋点事件');
+    const { draft } = await service.generateDraft('app:rec_1', { actorId: 'actor_1' });
+
+    expect(draft.status).toBe('draft');
+    expect(draft.events).toHaveLength(21);
+    expect(draft.events.reduce((sum, event) => sum + event.params.length, 0)).toBe(420);
+    expect(draft.events.map((event) => event.evtId)).toEqual(largePlan.decisions.map((item) => item.evtId));
+    expect(tracking.applyAiDraftEvents).not.toHaveBeenCalled();
   });
 
   it('需求单没有 PRD 链接时应在读取文档和调用模型前阻断', async () => {

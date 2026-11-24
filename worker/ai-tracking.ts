@@ -198,7 +198,7 @@ export async function generateAiDraft(
   try { plan = await generateReusePlan(snapshot, requirement, (prompt) => {
     const label = ++planningAttempt === 1 ? '对照正式库规划复用' : '修正复用规划';
     progress({ stage: 'planning', message: label });
-    return runGenerationStage(label, 90_000, (signal) => generateModelJson(env, prompt, scopedFetch(signal), 5000, 'planning'));
+    return runGenerationStage(label, 90_000, (signal) => generateModelJson(env, prompt, scopedFetch(signal), 12000, 'planning'));
   }); }
   catch (error) { throw governanceWriteError(error); }
   const version = (await latestDraft(env, actorId, recordId))?.version || 0;
@@ -365,12 +365,11 @@ async function generateModelJson(env: AiWorkerEnv, prompt: string, fetchImpl: Fe
 function normalizeModelEvents(raw: unknown, detail: TrackingDetail): AiTrackingDraftEvent[] {
   const root = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
   const rows = Array.isArray(root.events) ? root.events : [];
-  if (rows.length > 20) throw new TrackingWriteError('AI 草稿超过20个事件，不能截断', 400);
-  if (!rows.length) throw new TrackingWriteError('AI 草稿结构校验失败：没有生成事件', 400);
+  if (!rows.length) throw new GovernanceValidationError('AI 草稿结构校验失败：没有生成事件');
   const events = rows.map((value, index): AiTrackingDraftEvent => {
     const item = value && typeof value === 'object' ? value as Record<string, unknown> : {};
     const evtId = text(item.evtId) || `pending_event_${index + 1}`;
-    if (Array.isArray(item.params) && item.params.length > 100) throw new TrackingWriteError('单事件超过100个参数，不能截断', 400);
+    if (Array.isArray(item.params) && item.params.length > 100) throw new GovernanceValidationError('单事件超过100个新增参数，不能截断');
     const params = (Array.isArray(item.params) ? item.params : []).flatMap((entry): AiTrackingDraftParam[] => {
       const param = entry && typeof entry === 'object' ? entry as Record<string, unknown> : {};
       const paramName = text(param.paramName);
@@ -380,8 +379,7 @@ function normalizeModelEvents(raw: unknown, detail: TrackingDetail): AiTrackingD
     const reuseSource = normalizeReuseSource(item.reuseSource);
     return { clientId: crypto.randomUUID(), evtId, eventName: text(item.eventName) || '待人工确认', eventDefinition: text(item.eventDefinition) || '待人工确认', triggerTiming: text(item.triggerTiming) || '待人工确认', metricScenario: text(item.metricScenario), requestNotes: text(item.requestNotes), priority: ['P0', 'P1', 'P2'].includes(text(item.priority)) ? text(item.priority) : 'P1', platform: detail.source === 'web' ? 'Web' : (['iOS', 'Android', 'iOS、Android'].includes(text(item.platform)) ? text(item.platform) : detail.platform || 'iOS、Android'), handler: text(item.handler) || (detail.source === 'web' ? '前端' : '客户端'), commonProps: text(item.commonProps), version: text(item.version) || '待人工确认', minVersion: text(item.minVersion) || '待人工确认', changeType: ['新增', '修改', '废弃', '口径调整'].includes(text(item.changeType)) ? text(item.changeType) : '新增', evidence: textList(item.evidence), uncertainties: unique([...(evtId.startsWith('pending_') ? ['evt_id 待人工确认'] : []), ...textList(item.uncertainties)]), ...(reuseSource ? { reuseSource } : {}), params };
   });
-  if (events.reduce((sum, event) => sum + event.params.length, 0) > 400) throw new TrackingWriteError('AI 草稿结构校验失败：单次最多生成 400 个参数', 400);
-  if (new Set(events.map((event) => event.evtId)).size !== events.length) throw new TrackingWriteError('AI 草稿内存在重复 evt_id，请重新生成', 400);
+  if (new Set(events.map((event) => event.evtId.toLowerCase())).size !== events.length) throw new GovernanceValidationError('AI 草稿内存在重复 evt_id，请重新生成');
   return events;
 }
 

@@ -202,7 +202,7 @@ description: 根据 Pollo 的 PRD、截图和用户流程设计与治理 Web/App
 - 先检查正式库是否完整读取并按端过滤，只选择需求指定端且当前可复用的正式事件。候选片段、历史草稿、归档记录和参考清单都不能代替正式库证据。
 - 逐个业务动作比较正式事件语义、主体、触发边界和生命周期；严格按直接复用、扩展枚举、补充可选参数、新增事件的顺序判断。
 - 已废弃、待治理或 `canReuse=false` 的事件不能进入复用决策，也不能换名新增同义事件。待开发/设计中的事件只能标记待确认。
-- 每个需求动作最多匹配一个事件；同一事件用参数区分 UI 位置或操作。规划事件总数最多 20 个；不可静默截断。
+- 每个需求动作最多匹配一个事件；同一事件用参数区分 UI 位置或操作。规划必须覆盖 PRD 中全部适用需求，不设固定事件总数上限；不可静默截断或漏掉事件。
 - 新增事件必须说明不能复用的具体原因，并在 `comparedEventIds` 中至少列出一个比较过的正式事件 ID。
 - 本阶段只输出规划 JSON，不生成参数：`{"primaryBoard":"...","secondaryBoard":"...","decisions":[{"evtId":"正式ID或新增ID","decision":"reuse或new","reason":"...","comparedEventIds":["..."]}]}`。
 
@@ -217,7 +217,7 @@ description: 根据 Pollo 的 PRD、截图和用户流程设计与治理 Web/App
 - 需求特有的页面/组件位置、适用分支、新取值含义、验收注意事项、版本建议及待确认项写入事件或参数的 `requestNotes`，不得借此覆盖正式定义或触发边界。
 - 新增事件完整字段：`evtId,eventName,eventDefinition,triggerTiming,metricScenario,priority,platform,handler,commonProps,version,minVersion,changeType,requestNotes,evidence,uncertainties,reuseSource,params`。若提供 `reuseSource`，必须与正式记录的 `recordId,evtId,eventName` 一致，`modificationSummary` 说明本次复用理由。
 - 新增参数完整字段：`paramName,paramType,requiredRule,triggerCondition,enumRange,definition,defaultValue,example,requestNotes,platform,uncertainties`。正式参数没有独立默认值时 `defaultValue` 留空，不从示例推导。
-- 每事件最多 100 个参数、总数最多 400；超出时明确失败，不得截断后保存。正式参数不得因传入上下文截断而漏掉；PRD 截断则将指标覆盖标为待确认。
+- 单事件最多生成 100 个新增参数；不设跨事件参数总数上限。阶段二每次仅设计规划中的一个事件，完整草稿必须覆盖全部规划事件且不重复。正式参数不得因传入上下文截断而漏掉；PRD 截断则将指标覆盖标为待确认。
 - 正式字段冲突、触发边界不兼容、复用状态不清或参数信息不足时，列出原文和确认项，不得声称已通过审核或绕过复用校验。
 
 ## Pollo 专项约定

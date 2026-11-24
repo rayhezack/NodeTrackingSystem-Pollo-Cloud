@@ -51,6 +51,40 @@ describe('batched event design', () => {
     }
   });
 
+  it('generates every event in plans larger than 20 without imposing a total event or parameter cap', async () => {
+    const largePlan: ReusePlan = { ...plan, decisions: Array.from({ length: 21 }, (_, index) => ({
+      evtId: `large_event_${index + 1}`, decision: 'new', reason: '需求需要独立记录', comparedEventIds: [],
+    })) };
+    const completed: number[] = [];
+    const generate = jest.fn(async (prompt: string) => {
+      const batchPlan = JSON.parse(prompt.split('复用规划：')[1].split('\n')[0]) as ReusePlan;
+      return { events: [{ evtId: batchPlan.decisions[0].evtId, params: Array.from({ length: 20 }, (_, index) => ({ paramName: `param_${index}` })) }] };
+    });
+
+    const result = await generateDesignBatches(snapshot, largePlan, { prd: '完整 PRD' }, generate,
+      (count) => completed.push(count));
+
+    expect(result.events).toHaveLength(21);
+    expect(result.events.reduce((sum, event) => sum + (event as { params: unknown[] }).params.length, 0)).toBe(420);
+    expect(result.events.map((event) => (event as { evtId: string }).evtId)).toEqual(largePlan.decisions.map((item) => item.evtId));
+    expect(generate).toHaveBeenCalledTimes(21);
+    expect(completed).toHaveLength(21);
+  });
+
+  it('repairs a model response that incorrectly returns the entire plan in one event batch', async () => {
+    const oneEventPlan = { ...plan, decisions: plan.decisions.slice(0, 1) };
+    const generate = jest.fn()
+      .mockResolvedValueOnce({ events: plan.decisions.map((decision) => ({ evtId: decision.evtId })) })
+      .mockResolvedValueOnce({ events: [{ evtId: 'event_1' }] });
+
+    await expect(generateDesignBatches(snapshot, oneEventPlan, { prd: '完整 PRD' }, generate))
+      .resolves.toEqual({ events: [{ evtId: 'event_1' }] });
+    expect(generate).toHaveBeenCalledTimes(2);
+    expect(generate.mock.calls[0][0]).toContain('events 必须且只能包含这一个事件');
+    expect(generate.mock.calls[1][0]).toContain('与复用规划不一致');
+    expect(generate.mock.calls[1][4]).toBe(true);
+  });
+
   it('repairs a changed formal parameter type once and only counts the validated event', async () => {
     const official: OfficialEvent = { recordId: 'web:template', source: 'web', evtId: 'creation_template_click',
       eventName: '模板点击', platform: 'Web', version: '1', status: '已上线', paramLink: '', triggerTiming: '点击时' };

@@ -66,6 +66,17 @@ describe('official-first workflow', () => {
     expect(result.params[34].triggerCondition).toBe('卡片有标识时');
   });
 
+  it('accepts and preserves a reuse plan containing more than 20 events', async () => {
+    const library = await snapshot();
+    const decisions = Array.from({ length: 21 }, (_, index) => ({
+      evtId: `other_${index}`, decision: 'reuse', reason: '正式事件可覆盖该动作', comparedEventIds: [`other_${index}`],
+    }));
+    const normalized = normalizeReusePlan({ primaryBoard: 'Agent', decisions }, library);
+
+    expect(normalized.decisions).toHaveLength(21);
+    expect(normalized.decisions.map((item) => item.evtId)).toEqual(decisions.map((item) => item.evtId));
+  });
+
   it('preserves history IDs and converts an exact existing event proposed as new into reuse', async () => {
     const library = await snapshot();
     const plan = normalizeReusePlan(planFor('creation_template_view', 'new'), library);

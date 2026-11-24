@@ -28,7 +28,7 @@ import { FeishuDocumentService } from './feishu-document.service';
 import { FeishuOAuthService } from './feishu-oauth.service';
 import { ModelGatewayService } from './model-gateway.service';
 import { loadTrackingDesignSkill } from './tracking-design-guidelines';
-import { assertFreshGovernance, enforceGovernance, generateReusePlan, governanceReport } from '../../../shared/official-first-workflow';
+import { assertFreshGovernance, enforceGovernance, generateReusePlan, governanceReport, GovernanceValidationError } from '../../../shared/official-first-workflow';
 import { compileDesignResponse } from '../../../shared/ai-design-compiler';
 import { generateDesignBatches } from '../../../shared/ai-design-batches';
 
@@ -67,7 +67,7 @@ const modelEventSchema = z.object({
 });
 
 const modelResponseSchema = z.object({
-  events: z.array(modelEventSchema).min(1).max(20, '单次最多生成 20 个埋点事件'),
+  events: z.array(modelEventSchema).min(1),
 });
 
 const GENERATION_HANDOFF_TIMEOUT_MS = 8_000;
@@ -215,12 +215,11 @@ export class AiTrackingService {
         { role: "user", content: prompt },
       ]), undefined, (value, batchPlan) => {
         const batch = modelResponseSchema.safeParse(compileDesignResponse(value, snapshot, batchPlan));
-        if (!batch.success) throw new BadRequestException("AI 草稿结构校验失败：" + batch.error.issues[0]?.message);
+        if (!batch.success) throw new GovernanceValidationError("AI 草稿结构校验失败：" + batch.error.issues[0]?.message);
         enforceGovernance(batch.data.events.map((event, index) => this.normalizeEvent(event, index, detail.source, detail.platform)), snapshot, batchPlan);
       });
       const parsed = modelResponseSchema.safeParse(compileDesignResponse(raw, snapshot, plan));
       if (!parsed.success) throw new BadRequestException("AI 草稿结构校验失败：" + parsed.error.issues[0]?.message);
-      if (parsed.data.events.reduce((sum, event) => sum + event.params.length, 0) > 400) throw new BadRequestException("单次最多400个参数，不能截断");
       const events = enforceGovernance(parsed.data.events.map((event, index) => this.normalizeEvent(event, index, detail.source, detail.platform)), snapshot, plan);
       draft.governance = governanceReport(snapshot, plan, events);
       draft.summary = "正式库校验完成：复用 " + events.filter(event => event.reuseSource).length + " 个，新增建议 " + events.filter(event => !event.reuseSource).length + " 个";
