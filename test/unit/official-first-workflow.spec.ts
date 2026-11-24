@@ -66,6 +66,17 @@ describe('official-first workflow', () => {
     expect(result.params[34].triggerCondition).toBe('卡片有标识时');
   });
 
+  it('labels unchanged reuse as validation-only, and labels optional additions or enum extensions as modifications', async () => {
+    const library = await snapshot();
+    const plan = normalizeReusePlan(planFor(), library);
+    const unchanged = enforceGovernance([draft()], library, plan)[0];
+    expect(unchanged.changeType).toBe('仅校验');
+    const expanded = { ...unchanged, params: unchanged.params.map((param, index) => index ? param : { ...param, enumRange: 'show_case\nnew_value' }) };
+    expect(enforceGovernance([expanded], library, plan)[0].changeType).toBe('修改');
+    const newParam = { ...unchanged.params[0], paramName: 'entry_source', requiredRule: '非必传', triggerCondition: '' };
+    expect(enforceGovernance([{ ...unchanged, params: [...unchanged.params, newParam] }], library, plan)[0].changeType).toBe('修改');
+  });
+
   it('accepts and preserves a reuse plan containing more than 20 events', async () => {
     const library = await snapshot();
     const decisions = Array.from({ length: 21 }, (_, index) => ({
@@ -81,7 +92,7 @@ describe('official-first workflow', () => {
     const library = await snapshot();
     const plan = normalizeReusePlan(planFor('creation_template_view', 'new'), library);
     expect(plan.decisions[0].decision).toBe('reuse');
-    expect(enforceGovernance([draft({ changeType: '新增' })], library, plan)[0].changeType).toBe('修改');
+    expect(enforceGovernance([draft({ changeType: '新增' })], library, plan)[0].changeType).toBe('仅校验');
   });
 
   it('blocks known duplicate aliases, deprecated lifecycle, and unproven reuse references', async () => {

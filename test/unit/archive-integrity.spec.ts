@@ -53,6 +53,40 @@ function fixture() {
 describe('archive integrity safeguards', () => {
   beforeEach(() => resetFeishuTokenCache());
   const body = { stageId: 'launch', targetStage: '稳定归档', fields: {} };
+  it.each(['仅校验', '仅开发校验', '开发校验', '不修改正式库', '仅校验不归档'])('archives %s without reading or writing any official or deprecated table', async (changeType) => {
+    const { records, writes, fetchMock } = fixture();
+    Object.assign(records[tables.workbench][0].fields, { 变更类型: changeType, 正式状态: '已上线', 发布状态: '发布成功' });
+    const before = JSON.stringify([records[tables.official], records[tables.params], records[tables.enums]]);
+    await updateTrackingRecord(credentials, 'web:design-event', body, 'owner', fetchMock);
+    expect(records[tables.workbench][0].fields['流程阶段']).toBe('稳定归档');
+    expect(JSON.stringify([records[tables.official], records[tables.params], records[tables.enums]])).toBe(before);
+    expect(writes.filter((write) => write.table).every((write) => write.table === tables.workbench)).toBe(true);
+    const tableUrls = fetchMock.mock.calls.map(([url]) => String(url)).filter((url) => url.includes('/tables/'));
+    expect(tableUrls.filter((url) => [tables.official, tables.params, tables.design, tables.enums].some((table) => url.includes(table)))).toEqual([]);
+  });
+
+  it('does not sync a validation-only event when saving a published or deprecated record', async () => {
+    for (const stage of ['上线监控', '稳定归档', '已废弃']) {
+      const { records, writes, fetchMock } = fixture();
+      Object.assign(records[tables.workbench][0].fields, { 变更类型: '仅校验', 流程阶段: stage, 正式状态: '已废弃', 发布状态: '发布成功' });
+      await updateTrackingRecord(credentials, 'web:design-event', { stageId: 'archive', fields: { 变更类型: '仅校验' } }, 'owner', fetchMock);
+      expect(writes.filter((write) => write.table).every((write) => write.table === tables.workbench)).toBe(true);
+    }
+  });
+
+  it('publishes a modified sibling while preserving the validation-only event and its formal parameters', async () => {
+    const { records, fetchMock } = fixture();
+    records[tables.workbench][0].fields['变更类型'] = '仅校验';
+    records[tables.workbench].push({ record_id: 'second', fields: { ...records[tables.workbench][0].fields, evt_id: 'second_event', 事件中文名: '第二事件', 变更类型: '修改' } });
+    records[tables.official].push({ record_id: 'second-official', fields: { evt_id: 'second_event', 事件中文名: '第二事件' } });
+    records[tables.design].push({ record_id: 'second-param', fields: { evt_id: 'second_event', 来源设计记录ID: 'second', 参数名: 'entry', 参数定义: '入口', 数据类型: 'STRING', 必传规则: '非必传', 参数状态: '草稿' } });
+    await updateTrackingRecord(credentials, 'web:design-event', body, 'owner', fetchMock);
+    expect(records[tables.workbench].every((row) => row.fields['流程阶段'] === '稳定归档')).toBe(true);
+    expect(records[tables.params][0].fields['枚举/取值范围']).toBe('home_agent');
+    expect(records[tables.params].some((row) => row.fields.evt_id === 'second_event')).toBe(true);
+    expect(records[tables.enums][1].fields['枚举状态']).toBe('草稿');
+  });
+
   it('does not approve enums attached to a pending-governance parameter', async () => {
     const { records, fetchMock } = fixture();
     records[tables.params][0].fields['参数状态'] = '待治理';

@@ -1,3 +1,4 @@
+import { normalizeTrackingChangeType } from '@shared/api.interface';
 import { Save, LockKeyhole } from '@client/src/components/kubai/product-icons';
 import { useState, useEffect } from 'react';
 import { Loader2, CheckCircle2, ChevronDown } from 'lucide-react';
@@ -213,6 +214,7 @@ export function getFieldValue(
   if (val == null) return '';
   if (field.type === 'date') return toDateInputValue(val);
   if (field.baseField === '端') return toPlatformText(val);
+  if (field.baseField === '变更类型') return normalizeTrackingChangeType(val);
   if (typeof val === 'string') return val;
   if (Array.isArray(val) && val.length > 0) {
     const first = val[0];
@@ -251,7 +253,9 @@ const StageForm = ({
   const [designView, setDesignView] = useState<'event' | 'params'>('event');
   const usesDrafts = stageId === 'design' && Boolean(onDraftChange);
   const initial = Object.fromEntries((stageConfig?.fields || []).map((field) => [field.key, getFieldValue(detail, field)]));
-  const formData = usesDrafts ? { ...initial, ...draft?.formData } : localFormData;
+  const currentFormData = usesDrafts ? { ...initial, ...draft?.formData } : localFormData;
+  const formData = currentFormData.changeType
+    ? { ...currentFormData, changeType: normalizeTrackingChangeType(currentFormData.changeType) } : currentFormData;
   const dirtyFieldNames = usesDrafts
     ? new Set((stageConfig?.fields || []).filter((field) => Object.prototype.hasOwnProperty.call(draft?.formData || {}, field.key)).map((field) => field.baseField))
     : localDirtyFieldNames;

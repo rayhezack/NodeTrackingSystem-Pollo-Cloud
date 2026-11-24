@@ -1,3 +1,4 @@
+import { normalizeTrackingChangeType, normalizeParamChangeType } from '../shared/api.interface';
 import type {
   GetMyTodosResponse,
   GetParamsResponse,
@@ -253,7 +254,7 @@ function toTrackingDetail(record: BitableRecord, source: TrackingSource, trusted
     dsAcceptor,
     dsAcceptorIds: dsAcceptor.map((user) => user.user_id),
     requirementFields,
-    designFields: pickFields(record.record, ['evt_id', '事件中文名', '优先级', '端', '事件定义', '触发时机', '本次需求补充说明', 'UI图', 'UI图对应网页链接', '处理方', '公共属性要求', '版本', '最低版本', '变更类型', '参数拆行状态']),
+    designFields: { ...pickFields(record.record, ['evt_id', '事件中文名', '优先级', '端', '事件定义', '触发时机', '本次需求补充说明', 'UI图', 'UI图对应网页链接', '处理方', '公共属性要求', '版本', '最低版本', '变更类型', '参数拆行状态']), 变更类型: normalizeTrackingChangeType(cellText(record.record['变更类型'])) },
     reviewFields: pickFields(record.record, ['评审状态', '评审意见']),
     devFields: { ...pickFields(record.record, ['埋点开发状态']), '研发负责人': devOwner },
     acceptanceFields: { ...pickFields(record.record, ['DS验收状态', 'DS验收证据', 'DS验收时间']), 'DS验收人': dsAcceptor },
@@ -378,7 +379,7 @@ function toParamDetail(record: BitableRecord, source: TrackingSource): ParamDeta
     platform: normalizeParamApplicability(cellText(record.record[source === 'web' ? 'Web适用性' : 'App适用性']), source),
     status: cellText(record.record['参数状态']) || '草稿',
     version: cellText(record.record['版本']),
-    changeType: cellText(record.record['变更类型']) || '新增',
+    changeType: normalizeParamChangeType(cellText(record.record['变更类型'])),
   };
 }
 

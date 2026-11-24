@@ -1,3 +1,4 @@
+import { classifyAiDraftChange } from '@shared/api.interface';
 import { useEffect, useRef, useState } from 'react';
 import { Theme } from '@astryxdesign/core/theme';
 import { VStack } from '@astryxdesign/core/VStack';
@@ -100,7 +101,7 @@ export function AiDraftReview({ draft, selectedIds, onSelect, selectedParams, on
             {tab === 'spec' && <VStack gap={4}>
               <Field label="事件定义" value={active.eventDefinition} /><Field label="触发时机" value={active.triggerTiming} />
               <Field label="指标与使用场景" value={active.metricScenario} />{active.requestNotes && <Field label="本次需求说明" value={active.requestNotes} />}
-              <HStack gap={6} wrap="wrap"><Field label="处理方" value={active.handler} /><Field label="版本" value={active.version} /><Field label="最低版本" value={active.minVersion} /><Field label="变更类型" value={active.changeType} /></HStack>
+              <HStack gap={6} wrap="wrap"><Field label="处理方" value={active.handler} /><Field label="版本" value={active.version} /><Field label="最低版本" value={active.minVersion} /><Field label="变更类型" value={classifyAiDraftChange({ ...active, params: active.params.filter((param) => chosenNames.has(param.paramName)) })} /></HStack>
               {active.commonProps && <Field label="公共属性" value={active.commonProps} />}
               {active.reuseSource && <Field label="正式来源" value={`${active.reuseSource.evtId} · ${active.reuseSource.recordId}\n${active.reuseSource.modificationSummary}`} />}
             </VStack>}

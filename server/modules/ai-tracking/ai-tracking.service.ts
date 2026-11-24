@@ -1,3 +1,4 @@
+import { normalizeTrackingChangeType } from '../../../shared/api.interface';
 import { selectAiDraftEvents } from '../../../shared/ai-draft-selection';
 import {
   BadRequestException,
@@ -400,7 +401,7 @@ export class AiTrackingService {
       commonProps: input.commonProps.trim(),
       version: input.version.trim() || '待人工确认',
       minVersion: input.minVersion.trim() || '待人工确认',
-      changeType: ['新增', '修改', '废弃', '口径调整'].includes(input.changeType) ? input.changeType : '新增',
+      changeType: normalizeTrackingChangeType(input.changeType),
       evidence: input.evidence,
       reuseSource: input.reuseSource ? { recordId: input.reuseSource.recordId || '', evtId: input.reuseSource.evtId || '', eventName: input.reuseSource.eventName || '', modificationSummary: input.reuseSource.modificationSummary || '' } : undefined,
       uncertainties,

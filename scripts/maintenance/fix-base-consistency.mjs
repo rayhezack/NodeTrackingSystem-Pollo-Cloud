@@ -730,7 +730,8 @@ function normalizeChangeType(value) {
   const raw = text(value);
   if (['删除', '废弃'].includes(raw)) return '废弃';
   if (['仅开发校验', '开发校验', '不修改正式库', '仅校验不归档'].includes(raw)) return '仅校验';
-  return ['新增', '修改', '废弃', '口径调整', '仅校验'].includes(raw) ? raw : '新增';
+  if (raw === '口径调整') return '修改';
+  return ['新增', '修改', '废弃', '仅校验'].includes(raw) ? raw : '新增';
 }
 
 function unique(values) {

@@ -1,3 +1,4 @@
+import { normalizeTrackingChangeType as normalizeChangeType, normalizeParamChangeType } from '../shared/api.interface';
 import { TrackingEnumError, assertDistinctParams, dictionaryEnums, enumIdentity, mergeTrackingEnums, parameterDictionaryRange, parseTrackingEnums } from '../shared/tracking-enums';
 import { officialEventIdFilter, officialEventParamFilter } from './official-event-filter';
 import type {
@@ -145,7 +146,7 @@ export async function applyAiDraftEvents(
   const paramRecords = targets.flatMap(({ event, id }) => event.params.map((param) => toParamRecord(ref.source, id, event.evtId, event.version, {
     evtId: event.evtId, paramName: param.paramName, paramType: param.paramType, required: ['必传', '条件必传'].includes(param.requiredRule),
     requiredRule: param.requiredRule, triggerCondition: param.triggerCondition, enumRange: param.enumRange, definition: param.definition,
-    defaultValue: param.defaultValue, example: param.example, requestNotes: param.requestNotes, platform: param.platform, status: '草稿', version: event.version, changeType: event.changeType,
+    defaultValue: param.defaultValue, example: param.example, requestNotes: param.requestNotes, platform: param.platform, status: '草稿', version: event.version, changeType: param.source === 'ai' ? '新增' : '修改',
   })));
   if (paramRecords.length) {
     const createdParams = await createBitableRecords(credentials, paramKey(ref.source), paramRecords, fetchImpl);
@@ -777,6 +778,7 @@ async function syncOfficialLibrary(
   cache: OfficialSyncCache = {},
   validateOnly = false,
 ): Promise<void> {
+  if (normalizeChangeType(record['变更类型']) === '仅校验') return;
   const stage = text(record['流程阶段']);
   const officialStatus = text(record['正式状态']);
   const publishStatus = text(record['发布状态']);
@@ -1169,7 +1171,7 @@ function toParamRecord(source: TrackingSource, designId: string, fallbackEvtId: 
     必传规则: normalizeRequiredRule(body.requiredRule, body.required), 条件说明: text(body.triggerCondition),
     '枚举/取值范围': text(body.enumRange), 参数定义: text(body.definition), 本次需求说明: text(body.requestNotes), '默认值/示例': text(body.example || body.defaultValue),
     [source === 'web' ? 'Web适用性' : 'App适用性']: normalizeApplicability(body.platform, source), 参数状态: normalizeParamStatus(body.status),
-    版本: version || '1.0.0', 变更类型: normalizeChangeType(body.changeType), 来源设计记录ID: designId, 关联设计: [designId],
+    版本: version || '1.0.0', 变更类型: normalizeParamChangeType(body.changeType), 来源设计记录ID: designId, 关联设计: [designId],
   };
 }
 
@@ -1189,7 +1191,7 @@ function toParamPatch(source: TrackingSource, fields: Record<string, unknown>): 
   if (value.example !== undefined || value.defaultValue !== undefined) patch['默认值/示例'] = value.example || value.defaultValue || '';
   if (value.platform !== undefined) patch[source === 'web' ? 'Web适用性' : 'App适用性'] = normalizeApplicability(value.platform, source);
   if (value.status !== undefined) patch['参数状态'] = normalizeParamStatus(value.status);
-  if (value.changeType !== undefined) patch['变更类型'] = normalizeChangeType(value.changeType);
+  if (value.changeType !== undefined) patch['变更类型'] = normalizeParamChangeType(value.changeType);
   return patch;
 }
 
@@ -1202,7 +1204,7 @@ function toParamDetail(source: TrackingSource, id: string, record: Record<string
     triggerCondition: text(record['条件说明']), enumRange: text(record['枚举/取值范围']), definition: text(record['参数定义']), requestNotes: text(record['本次需求说明']),
     defaultValue: text(record['默认值/示例']), example: text(record['默认值/示例']),
     platform: normalizeApplicability(record[source === 'web' ? 'Web适用性' : 'App适用性'], source), status: text(record['参数状态']) || '草稿',
-    version: text(record['版本']), changeType: text(record['变更类型']) || '新增' };
+    version: text(record['版本']), changeType: normalizeParamChangeType(text(record['变更类型'])) };
 }
 
 function normalizeWorkbenchPatch(patch: Record<string, unknown>, source: TrackingSource): Record<string, unknown> {
@@ -1329,7 +1331,6 @@ function isFeishuPrdUrl(value: string): boolean { try { const url = new URL(valu
 function toDateCell(value: unknown): number | unknown { if (typeof value === 'number') return value; const raw = text(value); if (!raw) return value; const timestamp = Date.parse(/^\d{4}-\d{2}-\d{2}$/.test(raw) ? `${raw}T00:00:00+08:00` : raw); return Number.isFinite(timestamp) ? timestamp : value; }
 function platformCell(value: unknown, source: TrackingSource): string[] { if (source === 'web') return ['Web']; const raw = text(value); if (!raw) return ['iOS', 'Android']; return unique(raw.split(/[、,，/]/)); }
 function normalizeHandler(value: unknown, source: TrackingSource): string { const raw = text(value); const allowed = source === 'web' ? ['前端', '服务端', '前端/服务端'] : ['客户端', '客户端/服务端']; return allowed.includes(raw) ? raw : allowed[0]; }
-function normalizeChangeType(value: unknown): string { const raw = ({ 删除: '废弃', 不变: '修改', 仅开发校验: '仅校验' } as Record<string, string>)[text(value)] || text(value); return ['新增', '修改', '废弃', '口径调整', '仅校验'].includes(raw) ? raw : '新增'; }
 function normalizeParamType(value: unknown): string { const raw = text(value).toUpperCase(); return ({ TEXT: 'STRING', FLOAT: 'NUMBER', DOUBLE: 'NUMBER', INT: 'INTEGER', BOOLEAN: 'BOOL' } as Record<string, string>)[raw] || (['STRING', 'NUMBER', 'INTEGER', 'BOOL', 'ARRAY', 'OBJECT', 'UNKNOWN'].includes(raw) ? raw : 'STRING'); }
 function normalizeRequiredRule(value: unknown, required = false): string { const raw = text(value); return ['必传', '非必传', '条件必传'].includes(raw) ? raw : required ? '必传' : '非必传'; }
 function normalizeParamStatus(value: unknown): string { const raw = text(value); return ['草稿', '评审中', '已通过', '已发布', '待补定义', '废弃'].includes(raw) ? raw : '草稿'; }

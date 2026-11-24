@@ -165,7 +165,7 @@ describe('PolloCloud tracking read service', () => {
       ], has_more: false } }));
     const result = await getTrackingParams(credentials, 'app:rec-1', fetchMock as unknown as typeof fetch, includeInactive);
     expect(result.total).toBe(includeInactive ? 2 : 1);
-    if (includeInactive) expect(result.items.find(item => item.paramName === 'removed')?.changeType).toBe('删除');
+    if (includeInactive) expect(result.items.find(item => item.paramName === 'removed')?.changeType).toBe('废弃');
   });
 
   it('loads design parameters linked to the selected event', async () => {

@@ -1,3 +1,4 @@
+import { TRACKING_CHANGE_TYPES } from '../../../../shared/api.interface';
 // 阶段配置：UI 节点与 Base 枚举映射、侧边栏导航、表单字段定义
 
 export interface StageFieldConfig {
@@ -68,13 +69,7 @@ export const HANDLER_OPTIONS = [
   { value: '多端协同', label: '多端协同' },
 ];
 
-export const CHANGE_TYPE_OPTIONS = [
-  { value: '新增', label: '新增' },
-  { value: '修改', label: '修改' },
-  { value: '废弃', label: '废弃' },
-  { value: '口径调整', label: '口径调整' },
-  { value: '仅校验', label: '仅校验（不修改正式库）' },
-];
+export const CHANGE_TYPE_OPTIONS = TRACKING_CHANGE_TYPES.map((value) => ({ value, label: value }));
 
 export const QUALITY_GATE_OPTIONS = [
   { value: '未检查', label: '未检查' },

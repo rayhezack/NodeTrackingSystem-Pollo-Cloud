@@ -1,3 +1,4 @@
+import { classifyAiDraftChange } from './api.interface';
 import { TRACKING_SKILL_SOURCE_HASH } from './tracking-skill.generated';
 import { dictionaryEnums, dictionaryRange, isOpenNumericRange } from './tracking-enums';
 import type {
@@ -239,10 +240,11 @@ export function enforceGovernance(events: AiTrackingDraftEvent[], snapshot: Gove
         uncertainties: ['保留正式参数；本需求适用性、参数与枚举状态需审核'] });
     }
     if (!existing) notes.push(`新增事件理由：${decision.reason}`);
+    const reuseSource = existing ? { recordId: existing.recordId, evtId: existing.evtId, eventName: existing.eventName, modificationSummary: decision.reason } : undefined;
     return { ...event, ...eventMetadata, requestNotes: unique(eventNotes).join('\n'), evtId: existing?.evtId || event.evtId,
-      changeType: existing ? '修改' : '新增',
+      changeType: classifyAiDraftChange({ ...event, params, reuseSource }),
       commonProps: existing ? existing.commonProps || '' : [event.commonProps, removedCommon.length ? `复用现有公共属性：${removedCommon.join('、')}` : ''].filter(Boolean).join('\n'),
-      ...(existing ? { reuseSource: { recordId: existing.recordId, evtId: existing.evtId, eventName: existing.eventName, modificationSummary: decision.reason } } : {}),
+      ...(reuseSource ? { reuseSource } : {}),
       uncertainties: unique(notes), params };
   });
 }

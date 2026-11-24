@@ -1,3 +1,4 @@
+import { classifyAiDraftChange } from './api.interface';
 import type { AiTrackingDraftEvent, ApplyAiTrackingDraftRequest } from './api.interface';
 
 export class AiDraftSelectionError extends Error {
@@ -31,9 +32,10 @@ export function selectAiDraftEvents(allEvents: AiTrackingDraftEvent[], request: 
     if (names.some((name: string) => !known.has(name))) throw new AiDraftSelectionError(`${event.evtId} 所选参数不在当前草稿中`);
     allowlist.set(event.clientId, new Set(names));
   }
-  const project = (checked: AiTrackingDraftEvent[]): AiTrackingDraftEvent[] => checked.map((event) => ({
-    ...event, params: event.params.filter((param) => allowlist.get(event.clientId)?.has(param.paramName)),
-  }));
+  const project = (checked: AiTrackingDraftEvent[]): AiTrackingDraftEvent[] => checked.map((event) => {
+    const selected = { ...event, params: event.params.filter((param) => allowlist.get(event.clientId)?.has(param.paramName)) };
+    return { ...selected, changeType: classifyAiDraftChange(selected) };
+  });
   return { events: project(events), project };
 }
 

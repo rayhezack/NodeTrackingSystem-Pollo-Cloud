@@ -3,6 +3,37 @@
 export type TrackingSource = 'app' | 'web';
 export type TrackingSourceFilter = TrackingSource | 'all';
 
+/** Event changes describe the effect on the official library, independently of workflow stages. */
+export const TRACKING_CHANGE_TYPES = ['新增', '修改', '废弃', '仅校验'] as const;
+export type TrackingChangeType = (typeof TRACKING_CHANGE_TYPES)[number];
+export const PARAM_CHANGE_TYPES = TRACKING_CHANGE_TYPES.filter((value) => value !== '仅校验');
+export type ParamChangeType = (typeof PARAM_CHANGE_TYPES)[number];
+export const isTrackingChangeType = (value: string): value is TrackingChangeType =>
+  (TRACKING_CHANGE_TYPES as readonly string[]).includes(value);
+
+/** Read old records without rewriting history; all new writes use the canonical values. */
+export function normalizeTrackingChangeType(value: unknown): TrackingChangeType {
+  const raw: string = String(value || '').trim();
+  const aliases: Record<string, TrackingChangeType> = {
+    口径调整: '修改', 删除: '废弃', 不变: '修改',
+    仅开发校验: '仅校验', 开发校验: '仅校验', 不修改正式库: '仅校验', 仅校验不归档: '仅校验',
+  };
+  const normalized: string = aliases[raw] || raw;
+  return isTrackingChangeType(normalized) ? normalized : '新增';
+}
+
+/** Validation-only is an event-level publishing policy, never a parameter change. */
+export function normalizeParamChangeType(value: unknown): ParamChangeType {
+  const normalized = normalizeTrackingChangeType(value);
+  return normalized === '仅校验' ? '修改' : normalized;
+}
+
+/** Governance assigns parameter sources after checking the current official snapshot. */
+export function classifyAiDraftChange(event: AiTrackingDraftEvent): TrackingChangeType {
+  if (!event.reuseSource) return '新增';
+  return event.params.some((param) => param.source === 'ai' || param.source === 'official_modified') ? '修改' : '仅校验';
+}
+
 export interface TrackingUserRef {
   user_id: string;
   larkUserId?: string;

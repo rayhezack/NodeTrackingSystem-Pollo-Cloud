@@ -1,3 +1,4 @@
+import { normalizeParamChangeType } from '@shared/api.interface';
 import { Save } from '@client/src/components/kubai/product-icons';
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
@@ -82,7 +83,7 @@ const ParamFormDialog = ({
         requestNotes: initialData.requestNotes || '',
         platform: normalizePlatformValue(initialData.platform, source),
         status: initialData.status || '草稿',
-        changeType: initialData.changeType || '修改',
+        changeType: normalizeParamChangeType(initialData.changeType || '修改'),
       });
     } else {
       setForm(defaultForm(defaultEvtId, source));

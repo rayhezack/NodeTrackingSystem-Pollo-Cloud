@@ -1,3 +1,4 @@
+import { normalizeTrackingChangeType as normalizeChangeType, normalizeParamChangeType } from '../../../shared/api.interface';
 import { assertDistinctParams, dictionaryEnums, enumIdentity, mergeTrackingEnums, parameterDictionaryRange, parseTrackingEnums } from '../../../shared/tracking-enums';
 import { BadRequestException, ForbiddenException, Injectable, InternalServerErrorException, Logger, NotFoundException } from '@nestjs/common';
 import { FileService, type FileMeta } from '@lark-apaas/fullstack-nestjs-core';
@@ -819,7 +820,7 @@ export class TrackingService {
             requestNotes: param.requestNotes,
             platform: param.platform,
             status: '草稿',
-            changeType: event.changeType,
+            changeType: param.source === 'ai' ? '新增' : '修改',
           },
         )),
       );
@@ -2394,7 +2395,7 @@ export class TrackingService {
       dsAcceptor: dsAcceptor.items,
       dsAcceptorIds: dsAcceptor.ids,
       requirementFields,
-      designFields: pickFields(record.record, ['evt_id', '事件中文名', '优先级', '端', '事件定义', '触发时机', '本次需求补充说明', 'UI图', 'UI图对应网页链接', '处理方', '公共属性要求', '版本', '最低版本', '变更类型', '参数拆行状态']),
+      designFields: { ...pickFields(record.record, ['evt_id', '事件中文名', '优先级', '端', '事件定义', '触发时机', '本次需求补充说明', 'UI图', 'UI图对应网页链接', '处理方', '公共属性要求', '版本', '最低版本', '变更类型', '参数拆行状态']), 变更类型: normalizeChangeType(cellText(record.record['变更类型'])) },
       reviewFields: pickFields(record.record, ['评审状态', '评审意见']),
       devFields,
       acceptanceFields,
@@ -2437,7 +2438,7 @@ export class TrackingService {
       platform: normalizeParamApplicability(cellText(record.record[source === 'web' ? 'Web适用性' : 'App适用性']), source),
       status: cellText(record.record['参数状态']) || '草稿',
       version: cellText(record.record['版本']),
-      changeType: cellText(record.record['变更类型']) || '新增',
+      changeType: normalizeParamChangeType(cellText(record.record['变更类型'])),
     };
   }
 
@@ -2458,7 +2459,7 @@ export class TrackingService {
       [platformField]: normalizeParamApplicability(body.platform, source),
       参数状态: normalizeParamStatus(body.status),
       版本: version || '1.0.0',
-      变更类型: normalizeChangeType(body.changeType),
+      变更类型: normalizeParamChangeType(body.changeType),
       来源设计记录ID: recordId,
       关联设计: [recordId],
     };
@@ -4204,20 +4205,6 @@ function normalizeHandler(value: unknown, source: TrackingSource): string {
   return allowed.includes(raw) ? raw : allowed[0];
 }
 
-function normalizeChangeType(value?: string): string {
-  const raw = String(value || '').trim();
-  const alias: Record<string, string> = {
-    删除: '废弃',
-    不变: '修改',
-    仅开发校验: '仅校验',
-    开发校验: '仅校验',
-    不修改正式库: '仅校验',
-    仅校验不归档: '仅校验',
-  };
-  const normalized = alias[raw] || raw;
-  return ['新增', '修改', '废弃', '口径调整', '仅校验'].includes(normalized) ? normalized : '新增';
-}
-
 function normalizeDevStatus(value?: string): string {
   const raw = String(value || '').trim();
   if (raw === '已完成') return '已开发';
@@ -4508,7 +4495,7 @@ function toParamPatch(fields: Partial<CreateParamRequest>, source: TrackingSourc
     patch[source === 'web' ? 'Web适用性' : 'App适用性'] = normalizeParamApplicability(fields.platform, source);
   }
   if (fields.status !== undefined) patch['参数状态'] = normalizeParamStatus(fields.status);
-  if (fields.changeType !== undefined) patch['变更类型'] = normalizeChangeType(fields.changeType);
+  if (fields.changeType !== undefined) patch['变更类型'] = normalizeParamChangeType(fields.changeType);
   return patch;
 }
 
