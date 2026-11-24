@@ -1,5 +1,5 @@
 import { BITABLE_INSTANCES, searchBitableRecordPage, getBitableRecord, createBitableRecords, updateBitableRecords, deleteBitableRecords, type BitableInstanceKey } from './feishu-bitable';
-import { ensureRecordStore, storeMode, type AtomicDatabase } from './d1-record-store';
+import { ensureRecordStore, storeMode, recordCellText, type AtomicDatabase } from './d1-record-store';
 import type { AiWorkerEnv } from './ai-tracking';
 import { sendWorkflowNotification, type WorkflowTransitionNotification } from './feishu-notification';
 
@@ -159,7 +159,7 @@ export async function reconcileSyncJob(env: AiWorkerEnv, jobId: number, baseId: 
   if (!record) throw new Error('Base 记录不存在');
   const desired = JSON.parse(job.payload) as Record<string, unknown>;
   const keys = ['evt_id','需求ID','参数名','枚举值'].filter((key) => desired[key]);
-  if (!keys.length || keys.some((key) => String(desired[key]) !== String(record.record[key]))) throw new Error('Base 记录业务标识与待同步记录不匹配，未恢复');
+  if (!keys.length || keys.some((key) => recordCellText(desired[key]) !== recordCellText(record.record[key]))) throw new Error('Base 记录业务标识与待同步记录不匹配，未恢复');
   const existing = await db.prepare('SELECT local_id FROM tracking_base_mapping WHERE instance=? AND base_id=?').bind(instance,baseId).first<{local_id:string}>();
   if (existing && existing.local_id !== job.record_id) throw new Error('该 Base 记录已关联其他主库记录');
   await db.batch([

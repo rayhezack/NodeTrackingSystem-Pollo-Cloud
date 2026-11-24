@@ -42,4 +42,18 @@ describe('D1 authoritative record store using real SQLite transactions', () => {
     const aborted = new D1RecordStore(db); await aborted.create('webWorkbench', [{ evt_id: 'not-committed' }]);
     expect((await new D1RecordStore(db).search('webWorkbench', {})).total).toBe(0);
   });
+  it('finds migrated Base rich text and link objects, including mixed original and edited scalar cells', async () => {
+    const db = database(); await ensureRecordStore(db);
+    const original = {需求ID:[{type:'text',text:'req'}],evt_id:[{type:'text',text:'event'}],关联设计:{link_record_ids:['parent']}};
+    await db.prepare('INSERT INTO tracking_rows(instance,id,fields) VALUES(?,?,?)').bind('webWorkbench','original',JSON.stringify(original)).run();
+    const store = new D1RecordStore(db);
+    const filter = {conjunction:'and' as const,conditions:[{field_name:'需求ID',operator:'is',value:['req']}]};
+    expect((await store.search('webWorkbench',{filter})).records.map((row)=>row.id)).toEqual(['original']);
+    expect((await store.search('webWorkbench',{filter:{conjunction:'and',conditions:[{field_name:'关联设计',operator:'contains',value:['parent']}]}})).total).toBe(1);
+    await store.update('webWorkbench',[{id:'original',record:{evt_id:'edited'}}]);
+    expect((await store.search('webWorkbench',{filter})).records[0].record.evt_id).toBe('edited');
+    await store.commit();
+    expect((await new D1RecordStore(db).search('webWorkbench',{filter})).total).toBe(1);
+  });
+
 });

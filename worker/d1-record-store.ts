@@ -58,10 +58,10 @@ export class D1RecordStore {
       if (!['is', 'contains'].includes(condition.operator)) throw new Error(`D1 不支持筛选操作 ${condition.operator}`);
       const path = `$.${condition.field_name}`.replace(/'/g, "''");
       if (condition.operator === 'is') {
-        clauses.push(`json_extract(fields,'${path}')=?`);
+        clauses.push(`${cellTextSql(path)}=?`);
         bindings.push(condition.value[0]);
       } else {
-        clauses.push(`(json_extract(fields,'${path}')=? OR EXISTS (SELECT 1 FROM json_each(fields,'${path}') WHERE value=?))`);
+        clauses.push(`(${cellTextSql(path)}=? OR EXISTS (SELECT 1 FROM json_tree(fields,'${path}') WHERE atom=?))`);
         bindings.push(condition.value[0], condition.value[0]);
       }
     }
@@ -131,11 +131,29 @@ export class D1RecordStore {
     catch (error) { if (error instanceof Error && /CHECK constraint failed/i.test(error.message)) throw new StoreConflictError('数据已被其他操作更新，请重新加载后保存'); throw error; }
   }
 }
+/** Match the existing Base cell representation while preserving original stored fields. */
+export function recordCellText(value: unknown): string {
+  if (value == null) return '';
+  if (['string', 'number', 'boolean'].includes(typeof value)) return String(value);
+  if (Array.isArray(value)) return value.map(recordCellText).filter(Boolean).join('、');
+  if (typeof value === 'object') {
+    const item = value as Record<string, unknown>;
+    return [item.name,item.link,item.url,item.text,item.id].find((entry) => typeof entry === 'string' && entry.trim() || typeof entry === 'number')?.toString().trim() || '';
+  }
+  return '';
+}
+function cellTextSql(path: string): string {
+  const objectText = (value: string) => `COALESCE(json_extract(${value},'$.name'),json_extract(${value},'$.link'),json_extract(${value},'$.url'),json_extract(${value},'$.text'),json_extract(${value},'$.id'),'')`;
+  return `(CASE json_type(fields,'${path}') WHEN 'array' THEN COALESCE((SELECT group_concat(text,'、') FROM (SELECT CASE WHEN type='object' THEN ${objectText('value')} ELSE CAST(value AS TEXT) END AS text FROM json_each(fields,'${path}')) WHERE text!=''),'') WHEN 'object' THEN ${objectText(`json_extract(fields,'${path}')`)} ELSE COALESCE(CAST(json_extract(fields,'${path}') AS TEXT),'') END)`;
+}
+function containsCell(value: unknown, expected: string): boolean {
+  if (recordCellText(value) === expected) return true;
+  if (Array.isArray(value)) return value.some((item) => containsCell(item,expected));
+  if (value && typeof value === 'object') return Object.values(value).some((item) => containsCell(item,expected));
+  return false;
+}
 function matchesFilter(fields: Record<string, unknown>, filter?: BitableFilter): boolean {
   if (!filter?.conditions.length) return true;
-  const values = filter.conditions.map((condition) => {
-    const field = fields[condition.field_name];
-    return String(field) === condition.value[0] || Array.isArray(field) && field.some((item: unknown) => typeof item === 'object' && item !== null ? Object.values(item).includes(condition.value[0]) : String(item) === condition.value[0]);
-  });
+  const values = filter.conditions.map((condition) => condition.operator === 'contains' ? containsCell(fields[condition.field_name],condition.value[0]) : recordCellText(fields[condition.field_name]) === condition.value[0]);
   return filter.conjunction === 'or' ? values.some(Boolean) : values.every(Boolean);
 }
