@@ -10,7 +10,7 @@ function rows() {
   return {
     events: [
       ...Array.from({ length: 40 }, (_, index) => ({ id: `other${index}`, record: { evt_id: `other_${index}`, 状态: '已上线', 端: 'Web' } })),
-      { id: 'template', record: { evt_id: 'creation_template_view', 事件中文名: '模板曝光', 状态: '已上线', 端: 'Web', 触发时机: '卡片有效曝光时' } },
+      { id: 'template', record: { evt_id: 'creation_template_view', 事件中文名: '模板曝光', 状态: '已上线', 生命周期状态: '稳定归档', 端: 'Web', 触发时机: '卡片有效曝光时' } },
       { id: 'deprecated', record: { evt_id: 'page_leave', 状态: '已上线', 生命周期状态: '已废弃', 端: 'Web' } },
     ],
     params: Array.from({ length: 35 }, (_, index) => ({ id: `p${index}`, record: {
@@ -102,6 +102,35 @@ describe('official-first workflow', () => {
     const plan = normalizeReusePlan(planFor(), library);
     expect(() => enforceGovernance([draft({ reuseSource: { recordId: 'app:template', evtId: 'creation_template_view', eventName: '', modificationSummary: '' } })], library, plan)).toThrow('不一致');
     expect(() => enforceGovernance([draft({ evtId: 'template_card_click' })], library, plan)).toThrow('不一致');
+  });
+
+  it('keeps not-live and live-but-unfinalized events reusable while surfacing them as pending in the prompt, draft and report', async () => {
+    const records = rows();
+    records.events.push(
+      { id: 'pending', record: { evt_id: 'createflow_asset_select_click', 状态: '待开发', 生命周期状态: '埋点设计', 端: 'Web' } },
+      { id: 'unfinalized', record: { evt_id: 'quick_links_expo', 状态: '已上线', 生命周期状态: '埋点设计', 端: 'Web' } },
+    );
+    const library = await readGovernanceSnapshot('web', async (table) => records[table]);
+    const catalog = JSON.parse(reusePlanningPrompt(library, {}).split('完整正式事件目录：')[1]) as Array<{ evtId: string; canReuse: boolean; confirmedLive: boolean; definitionFinalized: boolean }>;
+    expect(catalog.find((event) => event.evtId === 'createflow_asset_select_click')).toMatchObject({ canReuse: true, confirmedLive: false, definitionFinalized: false });
+    expect(catalog.find((event) => event.evtId === 'quick_links_expo')).toMatchObject({ canReuse: true, confirmedLive: true, definitionFinalized: false });
+    expect(catalog.find((event) => event.evtId === 'creation_template_view')).toMatchObject({ canReuse: true, confirmedLive: true, definitionFinalized: true });
+
+    const decision = (evtId: string) => ({ evtId, decision: 'reuse', reason: '语义匹配；正式状态待确认', comparedEventIds: [evtId] });
+    const plan = normalizeReusePlan({ primaryBoard: '内容与资产', decisions: [decision('createflow_asset_select_click'), decision('quick_links_expo')] }, library);
+    const events = enforceGovernance([draft({ evtId: 'createflow_asset_select_click' }), draft({ clientId: 'second', evtId: 'quick_links_expo' })], library, plan);
+    expect(events[0].uncertainties.join(' ')).toContain('尚未确认上线（状态：待开发；生命周期：埋点设计）');
+    expect(events[1].uncertainties.join(' ')).toContain('已上线但正式定义未定稿（状态：已上线；生命周期：埋点设计）');
+    expect(enforceGovernance(events, library, plan)[0].uncertainties.filter((note) => note.includes('尚未确认上线'))).toHaveLength(1);
+    const pending = governanceReport(library, plan, events).checks.find((check) => check.name === '复用事件上线与定稿状态');
+    expect(pending?.status).toBe('pending');
+    expect(pending?.detail).toContain('尚未确认上线，需确认开发进度和定义是否已定稿：createflow_asset_select_click（状态：待开发；生命周期：埋点设计）');
+    expect(pending?.detail).toContain('已上线但正式定义未定稿（生命周期未到稳定归档），需核对正式定义：quick_links_expo（状态：已上线；生命周期：埋点设计）');
+
+    const livePlan = normalizeReusePlan(planFor(), library);
+    const liveEvents = enforceGovernance([draft()], library, livePlan);
+    expect(liveEvents[0].uncertainties.join(' ')).not.toMatch(/尚未确认上线|未定稿/);
+    expect(governanceReport(library, livePlan, liveEvents).checks.find((check) => check.name === '复用事件上线与定稿状态')?.status).toBe('passed');
   });
 
   it('removes common properties and flags draft enums rather than calling them verified', async () => {

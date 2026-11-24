@@ -29,6 +29,7 @@ import {
 import { getBitableMediaPreviewUrl, uploadBitableImage } from './feishu-files';
 import { resolveCanonicalIdentity } from './pollocloud-identity';
 import { getOfficialEvents, getOfficialParams } from './query-library';
+import { applyOfficialGovernance } from './official-governance';
 import {
   getTrackingRecords,
   getTrackingDetail,
@@ -329,6 +330,21 @@ const app = {
         return json({ data });
       } catch (error) {
         return json({ message: error instanceof Error ? error.message : 'Bitable request failed' }, 502);
+      }
+    }
+
+    if (url.pathname === '/api/query-library/governance') {
+      if (request.method !== 'POST') return json({ message: 'Method not allowed' }, 405);
+      const platformUser = resolvePolloCloudUser(request.headers);
+      if (!platformUser) return json({ message: 'Unauthorized' }, 401);
+      try {
+        const user = await resolveCanonicalIdentity(env, platformUser);
+        const permissions = await getPermissionConfig(env, user.id);
+        if (!permissions.canManage) return json({ message: '只有管理员可以治理正式库' }, 403);
+        return json(await applyOfficialGovernance(env, await request.json(), { name: user.name }));
+      } catch (error) {
+        const status = error instanceof TrackingWriteError ? error.status : error instanceof SyntaxError ? 400 : 502;
+        return json({ message: error instanceof Error ? error.message : '正式库治理失败' }, status);
       }
     }
 
