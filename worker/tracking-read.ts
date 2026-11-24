@@ -80,7 +80,7 @@ export async function getTrackingDetail(
   const ref = parseScopedRecordId(recordId);
   const current = await getBitableRecord(credentials, ref.source === 'web' ? 'webWorkbench' : 'workbench', ref.rawId, fetchImpl);
   if (!current) throw new Error('埋点需求不存在');
-  const sourced = await listWorkbenchRecords(credentials, ref.source, fetchImpl);
+  const sourced = await listWorkbenchRecords(credentials, ref.source, fetchImpl, credentials.LOCAL_STORE ? cellText(current.record['需求ID']) : undefined);
   const group = groupRecords(sourced).find((item) => item.records.some((record) => record.id === current.id)) || {
     source: ref.source,
     requestId: cellText(current.record['需求ID']),
@@ -131,6 +131,7 @@ export async function getTrackingParams(
     const result = await searchBitableRecordPage(credentials, ref.source === 'web' ? 'webParamDetail' : 'paramDetail', {
       pageSize: 500,
       pageToken,
+      ...(credentials.LOCAL_STORE ? { filter: { conjunction: 'or' as const, conditions: [{ field_name: '来源设计记录ID', operator: 'is', value: [ref.rawId] }, { field_name: '关联设计', operator: 'contains', value: [ref.rawId] }, { field_name: 'evt_id', operator: 'is', value: [evtId] }] } } : {}),
     }, fetchImpl);
     records.push(...result.records);
     if (!result.hasMore || !result.pageToken) break;
@@ -149,6 +150,7 @@ async function listWorkbenchRecords(
   credentials: FeishuCredentials,
   sourceFilter: TrackingSourceFilter | undefined,
   fetchImpl: FetchLike,
+  requestId?: string,
 ): Promise<SourcedRecord[]> {
   const sources = sourceFilter === 'app' || sourceFilter === 'web' ? [sourceFilter] : SOURCES;
   const batches = await Promise.all(sources.map(async (source) => {
@@ -158,6 +160,7 @@ async function listWorkbenchRecords(
       const result = await searchBitableRecordPage(credentials, source === 'web' ? 'webWorkbench' : 'workbench', {
         pageSize: 500,
         pageToken,
+        ...(requestId !== undefined ? { filter: { conjunction: 'and' as const, conditions: [{ field_name: '需求ID', operator: 'is', value: [requestId] }] } } : {}),
       }, fetchImpl);
       records.push(...result.records);
       if (!result.hasMore || !result.pageToken) break;

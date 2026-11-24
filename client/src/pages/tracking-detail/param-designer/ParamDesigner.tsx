@@ -29,6 +29,8 @@ interface ParamDesignerProps {
   actorLarkId?: string;
 }
 
+const parameterCache = new Map<string, { items: ParamDetail[]; updatedAt: number }>();
+
 const ParamDesigner = ({
   recordId,
   source,
@@ -37,6 +39,8 @@ const ParamDesigner = ({
   actorId,
   actorLarkId,
 }: ParamDesignerProps) => {
+  const cacheKey = `${actorId || actorLarkId || 'anonymous'}:${recordId}`;
+  const requestVersion = useRef(0);
   const [items, setItems] = useState<ParamDetail[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -62,24 +66,33 @@ const ParamDesigner = ({
   }, [canEdit]);
 
   const loadParams = useCallback(async () => {
-    setLoading(true);
+    const version = ++requestVersion.current;
+    const cached = parameterCache.get(cacheKey);
+    if (cached && Date.now() - cached.updatedAt < 60000) { setItems(cached.items); setLoading(false); }
+    else setLoading(true);
     setError(null);
     try {
       const res = await getParams(recordId);
-      setItems(res.items || []);
+      if (version !== requestVersion.current) return;
+      const next = res.items || [];
+      if (parameterCache.size > 60) parameterCache.clear();
+      parameterCache.set(cacheKey, { items: next, updatedAt: Date.now() });
+      setItems(next);
     } catch (err) {
+      if (version !== requestVersion.current) return;
       const msg = err instanceof Error ? err.message : '加载失败';
       setError(msg);
       logger.error('加载参数列表失败', err);
     } finally {
-      setLoading(false);
+      if (version === requestVersion.current) setLoading(false);
     }
-  }, [recordId]);
+  }, [recordId, cacheKey]);
 
   useEffect(() => {
     if (recordId) {
-      loadParams();
+      void loadParams();
     }
+    return () => { requestVersion.current++; };
   }, [recordId, loadParams]);
 
   useEffect(() => {
@@ -109,14 +122,14 @@ const ParamDesigner = ({
         actorId,
         actorLarkId,
       });
-      setItems((prev) => upsertParam(prev, res.item));
+      setItems((prev) => { const next = upsertParam(prev, res.item); parameterCache.set(cacheKey, { items: next, updatedAt: Date.now() }); return next; });
     } else if (editingParam) {
       const res = await updateParam(editingParam.recordId, {
         fields: data as unknown as Record<string, unknown>,
         actorId,
         actorLarkId,
       });
-      setItems((prev) => upsertParam(prev, res.item));
+      setItems((prev) => { const next = upsertParam(prev, res.item); parameterCache.set(cacheKey, { items: next, updatedAt: Date.now() }); return next; });
     }
   };
 
@@ -133,7 +146,7 @@ const ParamDesigner = ({
     try {
       if (idsToDelete.length === 1) await deleteParam(idsToDelete[0], actorId, actorLarkId);
       else await batchDeleteParams(recordId, { paramRecordIds: idsToDelete, actorId, actorLarkId });
-      setItems(previous => previous.filter(item => !idsToDelete.includes(item.recordId)));
+      setItems(previous => { const next = previous.filter(item => !idsToDelete.includes(item.recordId)); parameterCache.set(cacheKey, { items: next, updatedAt: Date.now() }); return next; });
       setSelectedParamIds(previous => previous.filter(id => !idsToDelete.includes(id)));
       toast.success(`已删除 ${idsToDelete.length} 个设计参数`);
     } catch (error) {

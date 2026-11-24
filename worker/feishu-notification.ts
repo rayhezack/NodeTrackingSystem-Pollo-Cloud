@@ -27,6 +27,10 @@ export async function sendWorkflowNotification(
   payload: WorkflowTransitionNotification,
   fetchImpl: FetchLike = fetch,
 ): Promise<WorkflowNotificationResult> {
+  if (credentials.LOCAL_STORE) {
+    credentials.LOCAL_STORE.notifications.push({ ...payload });
+    return { planned: true, configured: true, recipientCount: payload.recipients.length, sentCount: 0, failedCount: 0, skippedCount: 0 };
+  }
   const configured = Boolean(credentials.FEISHU_APP_ID?.trim() && credentials.FEISHU_APP_SECRET?.trim());
   const recipients = dedupeRecipients(payload.recipients);
   const result: WorkflowNotificationResult = {

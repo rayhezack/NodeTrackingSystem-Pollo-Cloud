@@ -1,4 +1,4 @@
-import { BarChart3, ClipboardList, History, LogOut, Search, ShieldCheck } from '@client/src/components/kubai/product-icons';
+import { BarChart3, ClipboardList, History, LogOut, RefreshCw, Search, ShieldCheck } from '@client/src/components/kubai/product-icons';
 import { useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { ChevronDown } from 'lucide-react';
@@ -18,6 +18,7 @@ import {
 const navItems = [
   { path: "/", label: "埋点工作台", icon: BarChart3 },
   { path: "/query-library", label: "正式查询库", icon: Search },
+  { path: "/data-sync", label: "数据同步", icon: RefreshCw },
   { path: "/permissions", label: "权限配置", icon: ShieldCheck },
 ];
 

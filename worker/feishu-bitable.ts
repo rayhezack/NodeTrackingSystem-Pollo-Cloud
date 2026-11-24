@@ -50,6 +50,10 @@ export async function searchBitableRecords(
   options: { pageSize?: number; pageToken?: string } = {},
   fetchImpl: FetchLike = fetch,
 ): Promise<unknown> {
+  if (env.LOCAL_STORE) {
+    const page = await env.LOCAL_STORE.search(instance, options);
+    return { items: page.records.map((row) => ({ record_id: row.id, fields: row.record })), has_more: page.hasMore, page_token: page.pageToken, total: page.total };
+  }
   const config = BITABLE_INSTANCES[instance as BitableInstanceKey];
   if (!config) throw new Error(`Unknown bitable instance: ${instance}`);
 
@@ -77,6 +81,7 @@ export async function searchBitableRecordPage(
   options: { pageSize?: number; pageToken?: string; fieldNames?: readonly string[]; viewId?: string; filter?: BitableFilter } = {},
   fetchImpl: FetchLike = fetch,
 ): Promise<BitableRecordPage> {
+  if (env.LOCAL_STORE) return env.LOCAL_STORE.search(instance, options);
   const config = BITABLE_INSTANCES[instance];
   const token = await getFeishuTenantToken(env, fetchImpl);
   const query = new URLSearchParams({
@@ -119,6 +124,7 @@ export async function getBitableRecord(
   recordId: string,
   fetchImpl: FetchLike = fetch,
 ): Promise<BitableRecord | null> {
+  if (env.LOCAL_STORE) return env.LOCAL_STORE.get(instance, recordId);
   const config = BITABLE_INSTANCES[instance];
   const token = await getFeishuTenantToken(env, fetchImpl);
   const payload = await fetchFeishuJson<{
@@ -139,6 +145,7 @@ export async function createBitableRecords(
   records: Array<Record<string, unknown>>,
   fetchImpl: FetchLike = fetch,
 ): Promise<BitableRecord[]> {
+  if (env.LOCAL_STORE) return env.LOCAL_STORE.create(instance, records);
   if (!records.length) return [];
   if (records.length > 500) throw new BaseFieldValidationError('Feishu bitable batch create supports at most 500 records');
   const normalized = records.map((fields) => ({ fields: normalizeWorkerFields(fields) }));
@@ -174,6 +181,7 @@ export async function updateBitableRecords(
   records: Array<{ id: string; record: Record<string, unknown> }>,
   fetchImpl: FetchLike = fetch,
 ): Promise<BitableRecord[]> {
+  if (env.LOCAL_STORE) return env.LOCAL_STORE.update(instance, records);
   if (!records.length) return [];
   if (records.length > 500) throw new BaseFieldValidationError('Feishu bitable batch update supports at most 500 records');
   const normalized = records.map(({ id, record }) => ({ record_id: id, fields: normalizeWorkerFields(record) }));
@@ -208,6 +216,7 @@ export async function deleteBitableRecords(
   recordIds: string[],
   fetchImpl: FetchLike = fetch,
 ): Promise<void> {
+  if (env.LOCAL_STORE) return env.LOCAL_STORE.delete(instance, recordIds);
   const ids = [...new Set(recordIds.map((id) => id.trim()).filter(Boolean))];
   if (!ids.length) return;
   if (ids.length > 500) throw new Error('Feishu bitable batch delete supports at most 500 records');

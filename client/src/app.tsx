@@ -3,6 +3,7 @@ import { Route, Routes } from 'react-router-dom';
 
 import Layout from './components/Layout';
 
+const DataSyncPage = React.lazy(() => import('./pages/data-sync/DataSyncPage'));
 const NotFound = React.lazy(() => import('./pages/NotFound/NotFound'));
 const WorkbenchPage = React.lazy(() => import('./pages/workbench/WorkbenchPage'));
 const TrackingDetailPage = React.lazy(() => import('./pages/tracking-detail/TrackingDetailPage'));
@@ -26,6 +27,7 @@ const RoutesComponent = () => {
         <Route index element={withPageSuspense(<WorkbenchPage />)} />
         <Route path="tracking/:recordId" element={withPageSuspense(<TrackingDetailPage />)} />
         <Route path="query-library" element={withPageSuspense(<QueryLibraryPage />)} />
+        <Route path="data-sync" element={withPageSuspense(<DataSyncPage />)} />
         <Route path="permissions" element={withPageSuspense(<PermissionsPage />)} />
       </Route>
       <Route path="*" element={withPageSuspense(<NotFound />)} />

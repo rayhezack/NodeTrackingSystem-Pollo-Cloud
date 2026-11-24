@@ -750,3 +750,12 @@ export interface GetOfficialParamsResponse {
   total: number;
   baseLink?: string;
 }
+
+export interface DataSyncStatus {
+  mode: 'base' | 'importing' | 'd1';
+  tables: { instance: string; count: number }[];
+  queue: { status: string; count: number; oldest: number }[];
+  migration: { index: number; token?: string; count: number } | null;
+  errors: { id: number; instance: string; record_id: string; status: string; error: string; attempts: number }[];
+  canManage: boolean;
+}

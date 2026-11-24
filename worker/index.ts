@@ -1,3 +1,5 @@
+import { D1RecordStore, StoreConflictError, storeMode, type AtomicDatabase } from './d1-record-store';
+import { syncStatus, importSyncPage, drainSync, reconcileSyncJob } from './data-sync';
 import { createAiJob, getAiJob, listAiJobs, cancelAiJob, pauseAiJob, resumeAiJob, runAiJob, dispatchAiJobs, getAiJobResult } from './ai-jobs';
 import { TrackingEnumError } from '../shared/tracking-enums';
 import { isBaseMutation, withBaseWriteGuard } from './base-write-guard';
@@ -72,6 +74,7 @@ export interface PolloCloudUser {
 
 export interface WorkerEnv extends AiWorkerEnv {
   TRACKING_APP_URL?: string;
+  TRACKING_D1_ENABLED?: string;
 }
 
 export function resolvePolloCloudUser(headers: Headers): PolloCloudUser | null {
@@ -88,9 +91,35 @@ const app = {
   async fetch(request: Request, env: WorkerEnv = {}): Promise<Response> {
     const url = new URL(request.url);
 
+    if (url.pathname === '/api/cron/data-sync') {
+      if (request.headers.get('x-pollocloud-trigger') !== 'cron') return json({ message: 'Forbidden' }, 403);
+      return json(await drainSync(env, 100));
+    }
+    if (url.pathname.startsWith('/api/data-sync')) {
+      const platformUser = resolvePolloCloudUser(request.headers);
+      if (!platformUser) return json({ message: 'Unauthorized' }, 401);
+      try {
+        const user = await resolveCanonicalIdentity(env, platformUser);
+        const activeEnv = env.DB && await storeMode(env.DB) === 'd1' ? { ...env, LOCAL_STORE: new D1RecordStore(env.DB as AtomicDatabase) } : env;
+        if (url.pathname.endsWith('/dispatch') && request.method === 'POST') return json(await drainSync(env, 50));
+        const permissions = await getPermissionConfig(activeEnv, user.id);
+        if (request.method === 'GET') return json({ ...await syncStatus(env), canManage: permissions.canManage });
+        if (request.method !== 'POST') return json({ message: 'Method not allowed' }, 405);
+        if (!permissions.canManage) return json({ message: '只有管理员可执行同步' }, 403);
+        if (url.pathname.endsWith('/reconcile')) { const body = await request.json() as { jobId: number; baseId: string }; return json(await reconcileSyncJob(env, body.jobId, body.baseId)); }
+        if (url.pathname.endsWith('/import')) return json(await importSyncPage(env));
+        if (url.pathname.endsWith('/run')) return json(await drainSync(env, 50));
+        if (url.pathname.endsWith('/retry')) {
+          await env.DB!.prepare("UPDATE tracking_sync_outbox SET status='pending',error=NULL WHERE status='failed'").run();
+          return json({ success: true });
+        }
+      } catch (error) { return json({ message: error instanceof Error ? error.message : '同步失败' }, 503); }
+    }
+
     if (url.pathname === '/api/cron/ai-jobs') {
       if (request.headers.get('x-pollocloud-trigger') !== 'cron') return json({ message: 'Forbidden' }, 403);
-      return json(await dispatchAiJobs(env, url.origin));
+      const activeEnv = env.DB && env.TRACKING_D1_ENABLED === '1' && await storeMode(env.DB) === 'd1' ? { ...env, LOCAL_STORE: new D1RecordStore(env.DB as AtomicDatabase) } : env;
+      return json(await dispatchAiJobs(activeEnv, url.origin));
     }
 
     if (request.method === 'GET' && url.pathname === '/api/health') {
@@ -440,10 +469,29 @@ function trackingListParams(params: URLSearchParams, source?: TrackingSourceFilt
 export default {
   async fetch(request: Request, env: WorkerEnv = {}): Promise<Response> {
     const path = new URL(request.url).pathname;
+    if (env.DB && env.TRACKING_D1_ENABLED === '1' && !path.startsWith('/api/data-sync') && !path.startsWith('/api/cron/') && path.startsWith('/api/')) {
+      const mode = await storeMode(env.DB);
+      if (mode === 'importing' && isBaseMutation(request.method, path)) return json({ message: '数据迁移中，请稍后保存；草稿已保留' }, 423);
+      if (mode === 'd1') {
+        const store = new D1RecordStore(env.DB as AtomicDatabase);
+        const started = Date.now();
+        try {
+          const response = await app.fetch(request, { ...env, LOCAL_STORE: store });
+          if (response.ok) await store.commit();
+          const headers = new Headers(response.headers);
+          headers.set('Server-Timing', `app;dur=${Date.now() - started}`);
+          headers.set('X-Tracking-Storage', 'd1');
+          return new Response(response.body, { status: response.status, headers });
+        } catch (error) { return json({ message: error instanceof Error ? error.message : 'D1 保存失败，请重试' }, error instanceof StoreConflictError ? 409 : 503); }
+      }
+    }
     if (!isBaseMutation(request.method, path)) return app.fetch(request, env);
     if (!resolvePolloCloudUser(request.headers)) return json({ message: 'Unauthorized' }, 401);
     try {
-      return await withBaseWriteGuard(env.DB, path, (state) => app.fetch(request, { ...env, BASE_WRITE_STATE: state }));
+      return await withBaseWriteGuard(env.DB, path, async (state) => {
+        if (env.TRACKING_D1_ENABLED === '1' && await storeMode(env.DB!) !== 'base') return json({ message: '存储已切换，请重新保存' }, 409);
+        return app.fetch(request, { ...env, BASE_WRITE_STATE: state });
+      });
     } catch {
       return json({ message: 'Base 写入协调失败，请检查归档任务记录后重试' }, 503);
     }

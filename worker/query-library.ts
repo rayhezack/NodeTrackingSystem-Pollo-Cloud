@@ -211,7 +211,7 @@ function searchAllRecords(
   fetchImpl: FetchLike,
   filter?: BitableFilter,
 ): Promise<BitableRecord[]> {
-  if (!fieldNames) return readAllRecords(credentials, instance, fieldNames, viewId, fetchImpl, filter);
+  if (credentials.LOCAL_STORE || !fieldNames) return readAllRecords(credentials, instance, fieldNames, viewId, fetchImpl, filter);
   let cache = snapshotCaches.get(fetchImpl);
   if (!cache) { cache = new Map(); snapshotCaches.set(fetchImpl, cache); }
   const key = JSON.stringify([credentials.FEISHU_APP_ID, credentials.FEISHU_APP_SECRET, instance, fieldNames, viewId, filter]);
