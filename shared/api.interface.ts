@@ -768,7 +768,7 @@ export interface OfficialGovernanceItem {
   evtId: string;
   status?: (typeof OFFICIAL_GOVERNANCE_STATUSES)[number];
   lifecycleStatus?: (typeof OFFICIAL_GOVERNANCE_LIFECYCLES)[number];
-  /** Why this change is made; written to 最近评审记录 with date and operator. */
+  /** Why this change is made. Shown in the preview with date and operator; not stored on the event. */
   note: string;
 }
 

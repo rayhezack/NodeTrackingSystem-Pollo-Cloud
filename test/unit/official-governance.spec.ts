@@ -13,7 +13,7 @@ async function library(): Promise<AtomicDatabase> {
   await ensureRecordStore(db);
   const store = new D1RecordStore(db);
   await store.create('queryLibrary', [
-    { evt_id: 'agent_type_expo', 状态: '已上线', 生命周期状态: '埋点设计', 最近评审记录: [{ type: 'text', text: '旧记录第一行\n第二行' }] },
+    { evt_id: 'agent_type_expo', 状态: '已上线', 生命周期状态: '埋点设计', 最近评审记录: { link: 'https://example.test/review/1', text: '评审记录' } },
     { evt_id: 'quick_links_expo', 状态: '已上线', 生命周期状态: '埋点设计' },
     { evt_id: 'old_event', 状态: '已废弃', 生命周期状态: '稳定归档' },
     { evt_id: 'dup_event', 状态: '已上线' },
@@ -52,7 +52,7 @@ describe('official library governance', () => {
     expect((await eventRecord(db, 'queryLibrary', 'agent_type_expo')).record['状态']).toBe('已上线');
   });
 
-  it('writes only status, lifecycle and the review note, keeps earlier review history, and queues a minimal Base patch', async () => {
+  it('writes only status and lifecycle, leaves the 最近评审记录 URL field untouched, and queues a minimal Base patch', async () => {
     const db = await library();
     const before = await outboxCount(db);
     const store = new D1RecordStore(db);
@@ -67,11 +67,12 @@ describe('official library governance', () => {
     const record = (await eventRecord(db, 'queryLibrary', 'agent_type_expo')).record;
     expect(record['状态']).toBe('待治理');
     expect(record['生命周期状态']).toBe('埋点设计');
-    expect(record['最近评审记录']).toBe('2026-11-24 测试管理员 正式库治理：状态 已上线→待治理。11/18 起两端停报\n旧记录第一行\n第二行');
+    expect(record['最近评审记录']).toEqual({ link: 'https://example.test/review/1', text: '评审记录' });
+    expect(result.changes[0].reviewNote).toBe('2026-11-24 测试管理员 正式库治理：状态 已上线→待治理。11/18 起两端停报');
     expect(await outboxCount(db)).toBe(before + 1);
     const job = await db.prepare('SELECT instance, payload FROM tracking_sync_outbox ORDER BY id DESC LIMIT 1').first<{ instance: string; payload: string }>();
     expect(job?.instance).toBe('queryLibrary');
-    expect(Object.keys(JSON.parse(job!.payload)).sort()).toEqual(['最近评审记录', '状态'].sort());
+    expect(JSON.parse(job!.payload)).toEqual({ 状态: '待治理' });
   });
 
   it('describes an empty lifecycle and targets the Web library by source', async () => {

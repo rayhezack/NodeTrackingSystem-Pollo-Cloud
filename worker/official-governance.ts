@@ -12,8 +12,10 @@ const MAX_NOTE_LENGTH = 300;
 
 /**
  * Admin-only correction of an official event's 状态 / 生命周期状态, e.g. after checking real report volume.
- * Only these two fields and 最近评审记录 are written. It runs on the D1 primary store so the change is
- * synced to Base through the outbox; editing Base directly would never reach D1.
+ * Only these two fields are written. It runs on the D1 primary store so the change is synced to Base
+ * through the outbox; editing Base directly would never reach D1.
+ * The reason note is returned for the preview and the operator's own records but is not stored on the event:
+ * the official table has no free-text note field, and 最近评审记录 is a URL field that Base rejects text for.
  * Deprecation is refused here: it must go through a 废弃 requirement, which moves the event to the deprecated library.
  */
 export async function applyOfficialGovernance(
@@ -52,14 +54,11 @@ export async function applyOfficialGovernance(
   if (errors.length) throw new TrackingWriteError(errors.join('\n'), 400);
 
   if (!request.dryRun && changes.length) {
-    const byId = new Map(events.map((row) => [row.id, row]));
     await updateBitableRecords(env, instance, changes.map((change) => ({
       id: change.recordId,
       record: {
         ...(change.after.status !== change.before.status ? { 状态: change.after.status } : {}),
         ...(change.after.lifecycleStatus !== change.before.lifecycleStatus ? { 生命周期状态: change.after.lifecycleStatus } : {}),
-        // Newest note first; earlier review history is kept below it.
-        最近评审记录: [change.reviewNote, plainText(byId.get(change.recordId)?.record['最近评审记录'])].filter(Boolean).join('\n'),
       },
     })));
   }
@@ -125,12 +124,4 @@ function describeChange(before: { status: string; lifecycleStatus: string }, aft
     before.status !== after.status ? `状态 ${show(before.status)}→${after.status}` : '',
     before.lifecycleStatus !== after.lifecycleStatus ? `生命周期 ${show(before.lifecycleStatus)}→${after.lifecycleStatus}` : '',
   ].filter(Boolean).join('，');
-}
-
-/** Rich-text cells arrive as text segments; keep their line breaks instead of joining them with separators. */
-function plainText(value: unknown): string {
-  if (value == null) return '';
-  if (typeof value === 'string') return value.trim();
-  if (Array.isArray(value)) return value.map((part) => typeof part === 'string' ? part : (part as { text?: unknown })?.text ?? '').join('').trim();
-  return recordCellText(value).trim();
 }
