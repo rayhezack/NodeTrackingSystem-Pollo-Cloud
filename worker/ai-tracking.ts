@@ -18,6 +18,7 @@ import type {
 import { loadTrackingDesignSkill } from './pollo-tracking-governance-skill';
 import { requestModelJson } from './ai-model';
 import { runGenerationStage } from './ai-generation-stage';
+import { compileDesignResponse } from '../shared/ai-design-compiler';
 import { generateDesignBatches } from '../shared/ai-design-batches';
 import { decodeDraftPayload, encodeDraftPayload, type DraftBlobStorage } from './ai-draft-payload';
 import { getOfficialGovernanceSnapshot } from './query-library';
@@ -213,11 +214,11 @@ export async function generateAiDraft(
           (signal) => generateModelJson(env, prompt, scopedFetch(AbortSignal.any([signal, batchSignal]))));
       },
       (completed, total) => progress({ stage: 'design', message: `生成事件与参数（${completed}/${total} 批完成）`, completed, total }),
-      (value, batchPlan) => { enforceGovernance(normalizeModelEvents(value, detail), snapshot, batchPlan); });
+      (value, batchPlan) => { enforceGovernance(normalizeModelEvents(compileDesignResponse(value, snapshot, batchPlan), detail), snapshot, batchPlan); });
   } catch (error) { throw governanceWriteError(error); }
   progress({ stage: 'validation', message: '统一校验事件、参数与正式库复用规则' });
   let events;
-  try { events = enforceGovernance(normalizeModelEvents(raw, detail), snapshot, plan); }
+  try { events = enforceGovernance(normalizeModelEvents(compileDesignResponse(raw, snapshot, plan), detail), snapshot, plan); }
   catch (error) { throw governanceWriteError(error); }
   const draft: AiTrackingDraft = {
     id: crypto.randomUUID(), recordId, requestId: detail.requestId, version: version + 1, status: 'draft', createdAt: Date.now(),

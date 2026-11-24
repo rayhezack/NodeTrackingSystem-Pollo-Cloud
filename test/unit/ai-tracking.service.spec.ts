@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { TRACKING_SKILL_SOURCE_HASH } from '../../shared/tracking-skill.generated';
 import { AiTrackingService } from '../../server/modules/ai-tracking/ai-tracking.service';
 import type { TrackingDetail } from '../../shared/api.interface';
 import type { GovernanceSnapshot } from '../../shared/official-first-workflow';
@@ -155,6 +156,31 @@ describe('AI 埋点草稿', () => {
       expect(draft.governance?.workflowVersion).toBe("official-first-v3");
       expect(draft.events[0].params[0].enumRange).toBe("home");
     }
+  });
+
+  it('compiles minimal reuse deltas before defaults and records the loaded Skill revision', async () => {
+    const { service, queryLibrary, model, tracking } = createFixture();
+    const official = { recordId: 'app:sub', source: 'app' as const, evtId: 'sub_result', eventName: '订阅结果',
+      platform: 'iOS、Android', version: '1', status: '已上线', paramLink: '', triggerTiming: '' };
+    queryLibrary.getGovernanceSnapshot.mockResolvedValue({ source: 'app', events: [official], contexts: [{ event: official, params: [{
+      paramKey: 'sub_result.sub_result', paramName: 'sub_result', paramType: 'STRING', required: true, requiredRule: '条件必传',
+      triggerCondition: '订阅结果返回时', definition: '业务结果', example: 'success', enumRange: 'success', status: '正式',
+    }] }], commonProps: [], enums: [], fingerprint: 'snapshot-1', counts: { events: 1, params: 1, commonProps: 0, enums: 0 } });
+    model.generateJson.mockReset().mockResolvedValueOnce({ primaryBoard: '付费链路', decisions: [{
+      evtId: 'sub_result', decision: 'reuse', reason: '复用业务结果', comparedEventIds: [],
+    }] }).mockResolvedValueOnce({ events: [{ evtId: 'sub_result', params: [{ paramName: 'sub_result', enumRange: 'failed' }] }] });
+    const { draft } = await service.generateDraft('app:rec_1', { actorId: 'actor_1' });
+    expect(model.generateJson).toHaveBeenCalledTimes(2);
+    expect(draft.events[0]).toMatchObject({ eventName: '订阅结果', triggerTiming: '',
+      params: [{ paramType: 'STRING', requiredRule: '条件必传', triggerCondition: '订阅结果返回时', enumRange: 'success\nfailed' }] });
+    expect(draft.governance).toMatchObject({ skillSourceHash: TRACKING_SKILL_SOURCE_HASH, designContractVersion: 'official-delta-v1' });
+    for (const call of model.generateJson.mock.calls) {
+      expect(call[0][0]).toMatchObject({ role: 'system' });
+      expect(call[0][0].content).toContain(TRACKING_SKILL_SOURCE_HASH);
+    }
+    draft.events[0].params[0].triggerCondition = 'tampered';
+    await expect(service.applyDraft('app:rec_1', draft.id, { actorId: 'actor_1' })).rejects.toThrow('条件冲突');
+    expect(tracking.applyAiDraftEvents).not.toHaveBeenCalled();
   });
 
   it("正式库读取失败时不调用模型，不写入Base", async () => {

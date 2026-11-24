@@ -94,11 +94,12 @@ describe('official-first workflow', () => {
     expect(governanceReport(library, plan, events).checks.find((check) => check.name === '枚举和新增参数')?.status).toBe('pending');
   });
 
-  it('blocks parameter type/required-condition conflicts and duplicate parameter names', async () => {
+  it('blocks parameter type/required-rule conflicts and duplicate parameter names', async () => {
     const library = await snapshot();
     const plan = normalizeReusePlan(planFor(), library);
     const base = enforceGovernance([draft()], library, plan)[0];
     expect(() => enforceGovernance([{ ...base, params: [{ ...base.params[0], paramType: 'INTEGER' }] }], library, plan)).toThrow('类型冲突');
+    expect(() => enforceGovernance([{ ...base, params: [{ ...base.params[0], requiredRule: '非必传' }] }], library, plan)).toThrow('必传规则冲突');
     expect(() => enforceGovernance([{ ...base, params: [{ ...base.params[0], triggerCondition: '' }] }], library, plan)).toThrow('条件冲突');
     expect(() => enforceGovernance([{ ...base, params: [base.params[0], base.params[0]] }], library, plan)).toThrow('重复参数');
   });
@@ -146,6 +147,12 @@ describe('official-first workflow', () => {
     const records = rows();
     await expect(readGovernanceSnapshot('web', async (table) => table === 'commonProps' ? [] : records[table])).rejects.toThrow('公共属性');
     await expect(readGovernanceSnapshot('web', async (table) => table === 'enums' ? [{ id: 'bad', record: { wrong_field: 'x' } }] : records[table])).rejects.toThrow('结构不匹配');
+  });
+
+  it('rejects conflicting official conditions before planning instead of choosing the first row', async () => {
+    const records = rows();
+    records.params.push({ ...records.params[0], id: 'duplicate', record: { ...records.params[0].record, 条件说明: '另一个正式条件' } });
+    await expect(readGovernanceSnapshot('web', async (table) => records[table])).rejects.toThrow('field_0（triggerCondition）');
   });
 
   it('fingerprints are stable across row order but detect drift; old drafts cannot apply', async () => {

@@ -29,6 +29,7 @@ import { FeishuOAuthService } from './feishu-oauth.service';
 import { ModelGatewayService } from './model-gateway.service';
 import { loadTrackingDesignSkill } from './tracking-design-guidelines';
 import { assertFreshGovernance, enforceGovernance, generateReusePlan, governanceReport } from '../../../shared/official-first-workflow';
+import { compileDesignResponse } from '../../../shared/ai-design-compiler';
 import { generateDesignBatches } from '../../../shared/ai-design-batches';
 
 const modelParamSchema = z.object({
@@ -213,11 +214,11 @@ export class AiTrackingService {
         { role: "system", content: loadTrackingDesignSkill('design') },
         { role: "user", content: prompt },
       ]), undefined, (value, batchPlan) => {
-        const batch = modelResponseSchema.safeParse(value);
+        const batch = modelResponseSchema.safeParse(compileDesignResponse(value, snapshot, batchPlan));
         if (!batch.success) throw new BadRequestException("AI 草稿结构校验失败：" + batch.error.issues[0]?.message);
         enforceGovernance(batch.data.events.map((event, index) => this.normalizeEvent(event, index, detail.source, detail.platform)), snapshot, batchPlan);
       });
-      const parsed = modelResponseSchema.safeParse(raw);
+      const parsed = modelResponseSchema.safeParse(compileDesignResponse(raw, snapshot, plan));
       if (!parsed.success) throw new BadRequestException("AI 草稿结构校验失败：" + parsed.error.issues[0]?.message);
       if (parsed.data.events.reduce((sum, event) => sum + event.params.length, 0) > 400) throw new BadRequestException("单次最多400个参数，不能截断");
       const events = enforceGovernance(parsed.data.events.map((event, index) => this.normalizeEvent(event, index, detail.source, detail.platform)), snapshot, plan);

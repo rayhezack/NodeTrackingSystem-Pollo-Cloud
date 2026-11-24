@@ -1,3 +1,4 @@
+import { compileDesignResponse } from '../../shared/ai-design-compiler';
 import { generateDesignBatches } from '../../shared/ai-design-batches';
 import type { GovernanceSnapshot, ReusePlan } from '../../shared/official-first-workflow';
 import { enforceGovernance, GovernanceValidationError } from '../../shared/official-first-workflow';
@@ -50,7 +51,7 @@ describe('batched event design', () => {
     }
   });
 
-  it('repairs a changed formal required condition once and only counts the validated event', async () => {
+  it('repairs a changed formal parameter type once and only counts the validated event', async () => {
     const official: OfficialEvent = { recordId: 'web:template', source: 'web', evtId: 'creation_template_click',
       eventName: '模板点击', platform: 'Web', version: '1', status: '已上线', paramLink: '', triggerTiming: '点击时' };
     const library: GovernanceSnapshot = { ...snapshot, events: [official], contexts: [{ event: official, params: [{
@@ -61,19 +62,45 @@ describe('batched event design', () => {
     const event: AiTrackingDraftEvent = { clientId: 'test', evtId: official.evtId, eventName: official.eventName,
       eventDefinition: '模板点击', triggerTiming: '点击时', metricScenario: '', priority: 'P0', platform: 'Web', handler: '前端',
       commonProps: '', version: '1', minVersion: '1', changeType: '修改', evidence: [], uncertainties: [],
-      params: [{ paramName: 'button_name', paramType: 'STRING', requiredRule: '必传', triggerCondition: '仅 Motion 模板点击时',
+      params: [{ paramName: 'button_name', paramType: 'INTEGER', requiredRule: '必传', triggerCondition: '',
         enumRange: '', definition: '按钮名', defaultValue: '', example: 'recreate', platform: 'Web', source: 'ai', uncertainties: [] }] };
-    const repaired = { ...event, params: [{ ...event.params[0], triggerCondition: '' }] };
+    const repaired = { ...event, params: [{ ...event.params[0], paramType: 'STRING' }] };
     const generate = jest.fn().mockResolvedValueOnce({ events: [event] }).mockResolvedValueOnce({ events: [repaired] });
     const onComplete = jest.fn();
     await expect(generateDesignBatches(library, one, { prd: '完整正文' }, generate, onComplete,
       (raw, batchPlan) => { enforceGovernance((raw as { events: AiTrackingDraftEvent[] }).events, library, batchPlan); }))
       .resolves.toEqual({ events: [repaired] });
     expect(generate).toHaveBeenCalledTimes(2);
-    expect(generate.mock.calls[1][0]).toContain('参数必传条件冲突：creation_template_click.button_name');
+    expect(generate.mock.calls[1][0]).toContain('参数类型冲突：creation_template_click.button_name');
     expect(generate.mock.calls[1][0]).toContain('完整正文');
     expect(generate.mock.calls[1][4]).toBe(true);
     expect(onComplete).toHaveBeenCalledTimes(1);
+  });
+
+  it('finishes sub_result generation without retrying AI condition drift and preserves it for review', async () => {
+    const official: OfficialEvent = { recordId: 'web:sub', source: 'web', evtId: 'sub_result',
+      eventName: '订阅结果', platform: 'Web', version: '1', status: '已上线', paramLink: '' };
+    const library: GovernanceSnapshot = { ...snapshot, events: [official], contexts: [{ event: official, params: [{
+      paramKey: 'sub_result.sub_result', paramName: 'sub_result', paramType: 'STRING',
+      required: true, requiredRule: '必传', triggerCondition: '', definition: '订阅结果', example: 'success', status: '正式',
+    }] }] };
+    const one: ReusePlan = { primaryBoard: '付费链路', decisions: [{ evtId: 'sub_result', decision: 'reuse', reason: '复用订阅结果', comparedEventIds: [] }] };
+    const event: AiTrackingDraftEvent = { clientId: 'test', evtId: 'sub_result', eventName: '订阅结果',
+      eventDefinition: '', triggerTiming: '', metricScenario: '', priority: 'P0', platform: 'Web', handler: '',
+      commonProps: '', version: '1', minVersion: '', changeType: '修改', evidence: [], uncertainties: [],
+      params: [{ paramName: 'sub_result', paramType: 'STRING', requiredRule: '必传', triggerCondition: '仅积分包购买完成时',
+        enumRange: '', definition: '订阅结果', defaultValue: '', example: 'success', platform: 'Web', source: 'ai', uncertainties: [] }] };
+    const generate = jest.fn().mockResolvedValue({ events: [event] });
+    const onComplete = jest.fn();
+    const raw = await generateDesignBatches(library, one, {}, generate, onComplete,
+      (value, batchPlan) => { enforceGovernance((compileDesignResponse(value, library, batchPlan) as { events: AiTrackingDraftEvent[] }).events, library, batchPlan); });
+    const events = enforceGovernance((compileDesignResponse(raw, library, one) as { events: AiTrackingDraftEvent[] }).events, library, one);
+    expect(generate).toHaveBeenCalledTimes(1);
+    expect(onComplete).toHaveBeenCalledTimes(1);
+    expect(events[0].params[0].triggerCondition).toBe('');
+    expect(events[0].params[0].requestNotes).toContain('仅积分包购买完成时');
+    expect(events[0].params[0].uncertainties.join(' ')).toContain('待确认');
+    expect(enforceGovernance(events, library, one)).toEqual(events);
   });
 
   it('stops after one failed repair and aborts outstanding work', async () => {

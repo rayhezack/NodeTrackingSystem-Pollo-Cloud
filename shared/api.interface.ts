@@ -581,6 +581,9 @@ export interface AiReuseDecision {
 }
 
 export interface AiGovernanceReport {
+  /** Exact bundled Skill used for generation; absent on historical drafts. */
+  skillSourceHash?: string;
+  designContractVersion?: 'official-delta-v1';
   workflowVersion: 'official-first-v3';
   source: TrackingSource;
   primaryBoard: string;

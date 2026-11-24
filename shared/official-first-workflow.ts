@@ -1,3 +1,4 @@
+import { TRACKING_SKILL_SOURCE_HASH } from './tracking-skill.generated';
 import { dictionaryEnums, dictionaryRange, isOpenNumericRange } from './tracking-enums';
 import type {
   AiGovernanceReport, AiReuseDecision, AiTrackingDraftEvent, OfficialEventContext,
@@ -69,6 +70,7 @@ export async function readGovernanceSnapshot(
         status: cell(row.record['参数状态']),
       })).filter((param) => param.paramName),
   }));
+  for (const context of contexts) assertParameterContracts(context.event.evtId, context.params);
   const commonProps = common.map((row) => ({
     name: cell(row.record['属性名']), definition: cell(row.record['定义']),
     type: cell(row.record['格式']), scope: cell(row.record['上报范围']),
@@ -177,9 +179,7 @@ export function enforceGovernance(events: AiTrackingDraftEvent[], snapshot: Gove
       }
     }
     const definitions = snapshot.contexts.find((context) => context.event.recordId === existing?.recordId)?.params || [];
-    for (const name of new Set(definitions.filter((param) => param.status !== '已废弃').map((param) => param.paramName))) {
-      if (new Set(definitions.filter((param) => param.paramName === name && param.status !== '已废弃').map((param) => normalizedType(param.paramType))).size > 1) throw new GovernanceValidationError(`正式参数定义冲突：${event.evtId}.${name}`);
-    }
+    assertParameterContracts(event.evtId, definitions);
     const removedCommon = event.params.filter((param) => common.has(param.paramName)).map((param) => param.paramName);
     const params = event.params.filter((param) => !common.has(param.paramName)).map((param) => ({ ...param, uncertainties: [...param.uncertainties] }));
     if (new Set(params.map((param) => param.paramName)).size !== params.length) throw new GovernanceValidationError(`${event.evtId} 存在重复参数名`);
@@ -246,7 +246,8 @@ export function enforceGovernance(events: AiTrackingDraftEvent[], snapshot: Gove
 }
 
 export function governanceReport(snapshot: GovernanceSnapshot, plan: ReusePlan, events: AiTrackingDraftEvent[]): AiGovernanceReport {
-  return { workflowVersion: WORKFLOW_VERSION, source: snapshot.source, ...plan,
+  return { workflowVersion: WORKFLOW_VERSION, skillSourceHash: TRACKING_SKILL_SOURCE_HASH,
+    designContractVersion: 'official-delta-v1', source: snapshot.source, ...plan,
     snapshotFingerprint: snapshot.fingerprint, counts: snapshot.counts,
     checks: [
       { name: '正式库完整读取', status: 'passed', detail: '事件、参数、公共属性、枚举均完整分页；不依赖归档工作台或UI视图' },
@@ -262,6 +263,29 @@ export function assertFreshGovernance(report: AiGovernanceReport | undefined, sn
   if (report?.workflowVersion !== WORKFLOW_VERSION) throw new GovernanceValidationError('旧版草稿未执行正式库校验，请重新生成');
   if (report.source !== snapshot.source || report.snapshotFingerprint !== snapshot.fingerprint) throw new GovernanceValidationError('正式库已变化，请重新生成并审核草稿后应用');
   return { primaryBoard: report.primaryBoard, secondaryBoard: report.secondaryBoard, decisions: report.decisions };
+}
+
+/** Reject ambiguous official data instead of depending on Feishu row order. */
+export function assertParameterContracts(evtId: string, params: OfficialParam[]): void {
+  const contracts: Map<string, Record<string, string>> = new Map();
+  for (const param of params.filter((item) => item.status !== '已废弃')) {
+    const contract: Record<string, string> = { ...officialParameterContract(param),
+      paramType: normalizedType(param.paramType), enumRange: param.enumRange || '', status: param.status || '',
+    };
+    const prior = contracts.get(param.paramName);
+    if (prior) {
+      const conflict = Object.keys(contract).find((field) => prior[field] !== contract[field]);
+      if (conflict) throw new GovernanceValidationError(`正式参数定义冲突：${evtId}.${param.paramName}（${conflict}）`);
+    }
+    contracts.set(param.paramName, contract);
+  }
+}
+
+export function officialParameterContract(param: OfficialParam): Record<string, string> {
+  return {
+    paramType: param.paramType, requiredRule: param.requiredRule || '非必传', triggerCondition: param.triggerCondition || '',
+    definition: param.definition, example: param.example, platform: param.platform || '', defaultValue: '',
+  };
 }
 
 function findEvent(snapshot: GovernanceSnapshot, id: string): OfficialEvent | undefined {

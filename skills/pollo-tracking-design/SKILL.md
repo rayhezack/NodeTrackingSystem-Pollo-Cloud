@@ -210,11 +210,13 @@ description: 根据 Pollo 的 PRD、截图和用户流程设计与治理 Web/App
 
 - 只依据已校验的复用规划生成，不得增加、删除规划事件或改写正式事件 ID。仅输出 `{"events":[...]}` JSON。
 - 复用事件只输出本需求真正新增或扩展的参数；服务端保留未修改的正式参数。公共属性不重复放入事件参数。
-- 复用事件的 `eventName`、`eventDefinition`、`triggerTiming`、`platform`、`handler`、`commonProps`、`version`、`minVersion`、`metricScenario` 必须逐字保留正式记录，正式空值也保持为空。正式参数的名称（包括历史大小写）、类型、定义、示例、适用端、必传规则和触发条件同样保留原文；缺资料写入 `uncertainties`，不能根据字段名猜测补齐。
+- 复用事件使用增量协议：只输出 `evtId,priority,requestNotes,evidence,uncertainties,params`；正式名称、定义、触发时机、端、版本等字段由程序从正式快照组装，不要求模型复制。`reuseSource` 可省略，由程序绑定已校验的来源。
+- 已有正式参数只输出 `paramName,enumRange,requestNotes,uncertainties`：`enumRange` 仅写本次建议追加的取值，没有扩展时可省略。参数名严格保留历史大小写；类型、必传规则、触发条件、定义、示例、适用端和默认值由程序继承，正式空值也保持为空。不要猜测、回传或改写这些继承字段。新增参数仍输出完整参数字段。
+- 若模型仍回传继承字段，编译器仅将其视为待确认提议，不能覆盖正式契约；独立校验器在组装后与应用前严格核对类型、必传规则和条件。缺资料或业务边界不兼容写入 `uncertainties`，不得声称业务验收通过。
 - 新增参数默认且只能为非必传；仅在统计分组、过滤、归因或诊断有明确需要时增加。扩枚举只能追加，逐行一个原始值，不得删除、替换或重释旧值；字典草稿值不是正式取值。
 - 需求特有的页面/组件位置、适用分支、新取值含义、验收注意事项、版本建议及待确认项写入事件或参数的 `requestNotes`，不得借此覆盖正式定义或触发边界。
-- 事件字段：`evtId,eventName,eventDefinition,triggerTiming,metricScenario,priority,platform,handler,commonProps,version,minVersion,changeType,requestNotes,evidence,uncertainties,reuseSource,params`。复用事件的 `reuseSource` 必须包含正式记录 `recordId,evtId,eventName,modificationSummary`。
-- 参数字段：`paramName,paramType,requiredRule,triggerCondition,enumRange,definition,defaultValue,example,requestNotes,platform,uncertainties`。正式参数没有独立默认值时 `defaultValue` 留空，不从示例推导。
+- 新增事件完整字段：`evtId,eventName,eventDefinition,triggerTiming,metricScenario,priority,platform,handler,commonProps,version,minVersion,changeType,requestNotes,evidence,uncertainties,reuseSource,params`。若提供 `reuseSource`，必须与正式记录的 `recordId,evtId,eventName` 一致，`modificationSummary` 说明本次复用理由。
+- 新增参数完整字段：`paramName,paramType,requiredRule,triggerCondition,enumRange,definition,defaultValue,example,requestNotes,platform,uncertainties`。正式参数没有独立默认值时 `defaultValue` 留空，不从示例推导。
 - 每事件最多 100 个参数、总数最多 400；超出时明确失败，不得截断后保存。正式参数不得因传入上下文截断而漏掉；PRD 截断则将指标覆盖标为待确认。
 - 正式字段冲突、触发边界不兼容、复用状态不清或参数信息不足时，列出原文和确认项，不得声称已通过审核或绕过复用校验。
 
