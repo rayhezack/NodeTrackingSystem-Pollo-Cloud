@@ -1,4 +1,5 @@
 import { TrackingEnumError, assertDistinctParams, dictionaryEnums, enumIdentity, mergeTrackingEnums, parameterDictionaryRange, parseTrackingEnums } from '../shared/tracking-enums';
+import { officialEventIdFilter, officialEventParamFilter } from './official-event-filter';
 import type {
   BatchDeleteParamsRequest,
   BatchDeleteParamsResponse,
@@ -499,7 +500,7 @@ export async function reuseOfficialTrackingEvent(
   const version = text(official.record['上线版本'] || current.record['版本']) || '1.0.0';
   const selectedKeys = new Set(unique(body.officialParamKeys || []).map((item) => item.toLocaleLowerCase()));
   const officialParams = selectedKeys.size
-    ? (await listAll(credentials, officialParamKey(ref.source), fetchImpl)).filter((item) => {
+    ? (await listAll(credentials, officialParamKey(ref.source), fetchImpl, officialEventParamFilter(officialRef.rawId, evtId))).filter((item) => {
         const linked = cellIds(item.record['关联事件']);
         if (!(linked.includes(officialRef.rawId) || text(item.record.evt_id) === evtId)) return false;
         const key = text(item.record['参数主键']) || `${evtId}.${text(item.record['参数名'])}`;
@@ -520,7 +521,7 @@ export async function reuseOfficialTrackingEvent(
   assertDistinctParams(officialParams, '选中的正式参数');
   const existingParams = resume ? await listParams(credentials, ref.source, resume.id, evtId, fetchImpl) : [];
   assertDistinctParams(existingParams, '当前设计');
-  const enumRows = officialParams.length ? await listAll(credentials, enumDictionaryKey(ref.source), fetchImpl) : [];
+  const enumRows = officialParams.length ? await listAll(credentials, enumDictionaryKey(ref.source), fetchImpl, officialEventIdFilter(evtId)) : [];
   let targetId = resume?.id || ref.rawId;
   if (resume) {
     // A retry may follow a partially completed import. Keep all user edits and workflow metadata.

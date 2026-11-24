@@ -1,12 +1,6 @@
+import { Search, RefreshCw, Inbox } from '@client/src/components/kubai/product-icons';
 import { useEffect, useState } from 'react';
-import {
-  Search,
-  RefreshCw,
-  Inbox,
-  AlertCircle,
-  ChevronLeft,
-  ChevronRight,
-} from 'lucide-react';
+import { AlertCircle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@client/src/components/ui/button';
 import { Input } from '@client/src/components/ui/input';
 import {

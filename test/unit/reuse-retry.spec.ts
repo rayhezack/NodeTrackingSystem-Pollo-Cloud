@@ -43,16 +43,24 @@ function fixture() {
     throw new Error(`Unexpected request: ${url}`);
   });
   const reuse = (keys = ['creation_template_view.position', 'creation_template_view.page_name']) => reuseOfficialTrackingEvent(creds, 'web:draft', { officialRecordId: 'web:official', officialParamKeys: keys }, 'owner', transport);
-  return { rows, writes, reuse, fail: (table: string) => { failAfterWrite = table; } };
+  return { rows, writes, reuse, transport, fail: (table: string) => { failAfterWrite = table; } };
 }
 describe('reusing existing events can resume safely', () => {
   beforeEach(() => resetFeishuTokenCache());
   it('copies a legacy numeric range verbatim and references existing dictionary rows instead of parsing placeholders', async () => {
-    const { rows, writes, reuse } = fixture();
+    const { rows, writes, reuse, transport } = fixture();
     await expect(reuse()).resolves.toMatchObject({ importedParamCount: 2, recordId: 'web:draft' });
     expect(rows[tables.params].find((row) => row.fields['参数名'] === 'position')!.fields['枚举/取值范围']).toBe('1\n2\n...');
     expect(rows[tables.params].find((row) => row.fields['参数名'] === 'page_name')!.fields['枚举字典']).toEqual(['enum-home']);
     expect(writes.some((write) => write.startsWith(tables.enums))).toBe(false);
+    const searches = (table: string) => transport.mock.calls.filter(([url]) => String(url).includes(`${table}/records/search`)).map(([, init]) => JSON.parse(String(init?.body)));
+    expect(searches(tables.formalParams)[0].filter).toEqual({ conjunction: 'or', conditions: [
+      { field_name: '关联事件', operator: 'contains', value: ['official'] },
+      { field_name: 'evt_id', operator: 'is', value: ['creation_template_view'] },
+    ] });
+    expect(searches(tables.enums)[0].filter).toEqual({ conjunction: 'and', conditions: [
+      { field_name: 'evt_id', operator: 'is', value: ['creation_template_view'] },
+    ] });
   });
   it.each([tables.workbench, tables.params])('resumes after a lost response from %s without duplicating events or parameters', async (table) => {
     const { rows, reuse, fail } = fixture();

@@ -1,5 +1,6 @@
+import { Edit, Trash2 } from '@client/src/components/kubai/product-icons';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
-import { Edit, Loader2, Trash2, Undo2 } from 'lucide-react';
+import { Loader2, Undo2 } from 'lucide-react';
 import { Badge } from '@client/src/components/ui/badge';
 import { Button } from '@client/src/components/ui/button';
 import { ChecklistCheckbox } from '@client/src/components/bencho/Checklist';

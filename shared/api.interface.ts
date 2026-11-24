@@ -598,7 +598,31 @@ export interface GenerateAiTrackingDraftResponse {
   draft: AiTrackingDraft;
 }
 
+export interface AiTrackingJob {
+  id: string;
+  recordId: string;
+  status: 'queued' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
+  createdAt: number;
+  updatedAt: number;
+  progress: AiTrackingGenerationProgress[];
+  draftId?: string;
+  error?: string;
+}
+
+export interface GetAiTrackingJobsResponse { jobs: AiTrackingJob[]; }
+export interface GetAiTrackingJobResponse { job: AiTrackingJob; }
+
+export interface AiTrackingGenerationTask {
+  id: string;
+  label: string;
+  status: 'pending' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
+  detail?: string;
+  attempt?: number;
+  durationMs?: number;
+}
+
 export interface AiTrackingGenerationProgress {
+  task?: AiTrackingGenerationTask;
   stage: string;
   message: string;
   elapsedMs?: number;
@@ -614,10 +638,14 @@ export interface GetAiTrackingDraftResponse {
   draft: AiTrackingDraft | null;
 }
 
+export type AiDraftParamSelection = Record<string, string[]>;
+
 export interface ApplyAiTrackingDraftRequest {
   actorId?: string;
   actorLarkId?: string;
   selectedEventClientIds?: string[];
+  /** Omit for legacy full-parameter import. When provided, every selected event needs an entry; [] imports only the event. */
+  selectedParamNamesByEvent?: AiDraftParamSelection;
 }
 
 export interface ApplyAiTrackingDraftResponse {

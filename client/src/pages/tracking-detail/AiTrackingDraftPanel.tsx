@@ -1,14 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  Check,
-  FileCheck2,
-  FileSearch,
-  ExternalLink,
-  Loader2,
-  RefreshCw,
-  Sparkles,
-  TriangleAlert,
-} from 'lucide-react';
+import { startAiBackgroundJob, getLatestAiJob, getAiJob, stopAiJob, pauseAiJob, resumeAiJob, getAiJobResult } from '@client/src/api/ai-jobs';
+import { FileCheck2, FileSearch, ExternalLink, RefreshCw, Sparkles } from '@client/src/components/kubai/product-icons';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { Check, Loader2, TriangleAlert } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@client/src/components/ui/badge';
 import { Button } from '@client/src/components/ui/button';
@@ -34,11 +27,17 @@ import type {
   AiFeishuAuthStatus,
   AiTrackingConfigStatus,
   AiTrackingDraft,
-  AiTrackingGenerationProgress,
+  AiDraftParamSelection,
+  AiTrackingJob,
   TrackingDetail,
 } from '@shared/api.interface';
 import { UploadDropzone, type UploadDocument } from '@client/src/components/bencho/UploadDropzone';
+import { TaskMonitor } from '@client/src/components/task-monitor/TaskMonitor';
+import { advanceMonitor, finishMonitor, startMonitor, type MonitorRun } from '@client/src/components/task-monitor/task-monitor-state';
+import { allDraftParams, countDraftParams } from '@client/src/components/draft-review/param-selection';
 import { getAiDraftGenerationBlockReason } from './ai-tracking-prd.utils';
+
+const AiDraftReview = lazy(() => import('@client/src/components/draft-review/AiDraftReview').then((module) => ({ default: module.AiDraftReview })));
 
 interface AiTrackingDraftPanelProps {
   detail: TrackingDetail;
@@ -61,10 +60,14 @@ const AiTrackingDraftPanel = ({
   const [authDialogOpen, setAuthDialogOpen] = useState(false);
   const [draft, setDraft] = useState<AiTrackingDraft | null>(null);
   const [draftDialogOpen, setDraftDialogOpen] = useState(false);
+  const [selectedParams, setSelectedParams] = useState<AiDraftParamSelection>({});
+  const selectionDraftRef = useRef('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [generationError, setGenerationError] = useState('');
-  const [generationProgress, setGenerationProgress] = useState<AiTrackingGenerationProgress | null>(null);
+  const [job, setJob] = useState<AiTrackingJob | null>(null);
+  const [stopping, setStopping] = useState(false);
+  const [monitorRun, setMonitorRun] = useState<MonitorRun | null>(null);
   const generationAbortRef = useRef<AbortController | null>(null);
   const [applying, setApplying] = useState(false);
   const [contextFiles, setContextFiles] = useState<UploadDocument[]>([]);
@@ -75,7 +78,20 @@ const AiTrackingDraftPanel = ({
 
   const setActiveDraft = useCallback((nextDraft: AiTrackingDraft | null) => {
     setDraft(nextDraft);
-    setSelectedIds(new Set(nextDraft?.events.map((event) => event.clientId) || []));
+    if (nextDraft?.status === 'generating') {
+      setMonitorRun((previous) => previous || startMonitor(nextDraft.createdAt, true));
+    } else if (nextDraft?.status === 'draft' || nextDraft?.status === 'failed') {
+      setMonitorRun((previous) => previous?.status === 'running'
+        ? finishMonitor(previous, nextDraft.status === 'failed' ? 'failed' : 'completed', Date.now(),
+          nextDraft.status === 'failed' ? nextDraft.failureMessage || '生成失败，请重新生成' : `${nextDraft.events.length} 个事件 · ${nextDraft.events.reduce((count, event) => count + event.params.length, 0)} 个参数，待人工确认`)
+        : previous);
+    }
+    const selectionKey: string = nextDraft ? `${nextDraft.id}:${nextDraft.status}` : '';
+    if (selectionDraftRef.current !== selectionKey) {
+      selectionDraftRef.current = selectionKey;
+      setSelectedIds(new Set(nextDraft?.events.map((event) => event.clientId) || []));
+      setSelectedParams(allDraftParams(nextDraft?.events || []));
+    }
   }, []);
 
   const pollDraftGeneration = useCallback(async (draftId: string) => {
@@ -86,7 +102,7 @@ const AiTrackingDraftPanel = ({
       if (generationPollRef.current !== pollId) return;
       try {
         const { draft: nextDraft } = await getAiTrackingDraft(detail.recordId, draftId, actorId, actorLarkId);
-        if (!nextDraft) return;
+        if (generationPollRef.current !== pollId || !nextDraft) return;
         setActiveDraft(nextDraft);
         if (nextDraft.status !== 'generating') {
           if (nextDraft.status === 'failed') {
@@ -100,6 +116,49 @@ const AiTrackingDraftPanel = ({
     }
     toast.warning('AI 草稿仍在后台生成，请稍后重新打开需求单查看');
   }, [actorId, actorLarkId, detail.recordId, setActiveDraft]);
+
+  const receiveJob = useCallback(async (next: AiTrackingJob, cancelled: () => boolean) => {
+    if (cancelled()) return;
+    setJob(next);
+    let run: MonitorRun = startMonitor(next.createdAt);
+    for (const entry of next.progress) run = advanceMonitor(run, entry, next.createdAt + (entry.elapsedMs || 0));
+    if (next.status === 'queued') { run = { ...run, status: 'queued', summary: '任务已排队，后台将自动继续执行' }; }
+    if (next.status === 'completed') {
+      const { draft: result } = await getAiJobResult(next.id);
+      if (cancelled()) return;
+      setActiveDraft(result);
+      run = finishMonitor(run, 'completed', next.updatedAt, `${result?.events.length || 0} 个事件，待人工确认`);
+    } else if (next.status === 'paused') {
+      run = finishMonitor(run, 'paused', next.updatedAt, '任务已暂停，已完成结果保留；继续后从检查点恢复');
+    } else if (next.status === 'failed' || next.status === 'cancelled') {
+      run = finishMonitor(run, next.status, next.updatedAt, next.status === 'cancelled' ? '已手动停止；已生成内容不会自动录入' : next.error || '后台任务失败');
+    }
+    if (!cancelled()) setMonitorRun(run);
+  }, [setActiveDraft]);
+
+  const watchJob = useCallback(async (initial: AiTrackingJob) => {
+    const pollId: number = ++generationPollRef.current;
+    const cancelled = () => generationPollRef.current !== pollId;
+    let next: AiTrackingJob = initial;
+    let failures = 0;
+    while (!cancelled()) {
+      try {
+        await receiveJob(next, cancelled);
+        if (!['queued', 'running'].includes(next.status)) return;
+      } catch {
+        failures += 1;
+        if (failures === 3) toast.warning('草稿暂时读取失败，正在重试；后台结果已保留');
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, 2500));
+      if (cancelled()) return;
+      try { next = await getAiJob(initial.id); failures = 0; }
+      catch {
+        failures += 1;
+        if (failures === 3) toast.warning('状态连接暂时中断，后台任务仍会继续运行');
+        await new Promise((resolve) => window.setTimeout(resolve, Math.min(15000, failures * 2500)));
+      }
+    }
+  }, [receiveJob]);
 
   const refreshConfig = useCallback(async () => {
     const nextConfig = await getAiTrackingConfig();
@@ -120,7 +179,17 @@ const AiTrackingDraftPanel = ({
   useEffect(() => {
     let cancelled = false;
     setActiveDraft(null);
-    if (!canEdit) return () => { cancelled = true; };
+    if (!canEdit || !config) return () => { cancelled = true; };
+    if (config.tokenStorage === 'encrypted_d1') {
+      const initialPoll: number = generationPollRef.current;
+      void getLatestAiJob(detail.recordId).then(async (latest) => {
+        if (cancelled || initialPoll !== generationPollRef.current) return;
+        if (latest) { void watchJob(latest); return; }
+        const { draft: legacy } = await getLatestAiTrackingDraft(detail.recordId, actorId, actorLarkId);
+        if (!cancelled && initialPoll === generationPollRef.current) setActiveDraft(legacy);
+      }).catch(() => undefined);
+      return () => { cancelled = true; generationPollRef.current += 1; };
+    }
     void getLatestAiTrackingDraft(detail.recordId, actorId, actorLarkId)
       .then(({ draft: latestDraft }) => {
         if (cancelled || !latestDraft) return;
@@ -131,7 +200,7 @@ const AiTrackingDraftPanel = ({
       })
       .catch(() => undefined);
     return () => { cancelled = true; };
-  }, [actorId, actorLarkId, canEdit, detail.recordId, pollDraftGeneration, setActiveDraft]);
+  }, [actorId, actorLarkId, canEdit, config, detail.recordId, pollDraftGeneration, setActiveDraft, watchJob]);
 
   useEffect(() => () => {
     generationPollRef.current += 1;
@@ -139,15 +208,29 @@ const AiTrackingDraftPanel = ({
   }, []);
 
   useEffect(() => {
-    setGenerationProgress(null);
+    setMonitorRun(null);
+    setJob(null);
     setGenerationError('');
-    return () => { generationAbortRef.current?.abort(); };
+    return () => { generationPollRef.current += 1; generationAbortRef.current?.abort(); };
   }, [detail.recordId]);
 
   const performGenerate = useCallback(async () => {
     setLoading(true);
     setGenerationError('');
-    setGenerationProgress({ stage: 'preparing', message: '准备生成' });
+    setMonitorRun(startMonitor(Date.now()));
+    if (config?.tokenStorage === 'encrypted_d1') {
+      try {
+        const next = await startAiBackgroundJob(detail.recordId, {
+          contextFiles: contextFiles.map(({ name, content }) => ({ name, content })),
+        });
+        void watchJob(next);
+      } catch (error) {
+        const message: string = error instanceof Error ? error.message : '创建后台任务失败';
+        setMonitorRun((previous) => previous ? finishMonitor(previous, 'failed', Date.now(), message) : previous);
+        toast.error(message);
+      } finally { setLoading(false); }
+      return;
+    }
     const abort = new AbortController();
     generationAbortRef.current = abort;
     try {
@@ -155,22 +238,26 @@ const AiTrackingDraftPanel = ({
         actorId,
         actorLarkId,
         contextFiles: contextFiles.map(({ name, content }) => ({ name, content })),
-      }, { signal: abort.signal, onProgress: setGenerationProgress });
+      }, { signal: abort.signal, onProgress: (progress) => setMonitorRun((previous) => previous ? advanceMonitor(previous, progress, Date.now()) : previous) });
+      if (abort.signal.aborted) return;
       setActiveDraft(result.draft);
-      setDraftDialogOpen(true);
       if (result.draft.status === 'generating') {
+        setMonitorRun((previous) => previous?.tasks.every((task) => task.status === 'pending') ? startMonitor(previous.startedAt, true) : previous);
         void pollDraftGeneration(result.draft.id);
       }
     } catch (error) {
       if (abort.signal.aborted) return;
       const message = error instanceof Error ? error.message : 'AI 埋点草稿生成失败';
       setGenerationError(message);
+      setMonitorRun((previous) => previous ? finishMonitor(previous, 'failed', Date.now(), message) : previous);
       toast.error(message);
     } finally {
-      setLoading(false);
-      setGenerationProgress(null);
+      if (generationAbortRef.current === abort) {
+        setLoading(false);
+        generationAbortRef.current = null;
+      }
     }
-  }, [actorId, actorLarkId, contextFiles, detail.recordId, pollDraftGeneration, setActiveDraft]);
+  }, [actorId, actorLarkId, config, contextFiles, detail.recordId, pollDraftGeneration, setActiveDraft, watchJob]);
 
   useEffect(() => {
     if (!authUrl || auth?.authorized || !authDialogOpen) return;
@@ -220,9 +307,28 @@ const AiTrackingDraftPanel = ({
     }
   }, []);
 
+  const jobActive: boolean = job?.status === 'queued' || job?.status === 'running';
+  const handleStop = async () => {
+    if (!job || stopping) return;
+    setStopping(true);
+    try { await receiveJob(await stopAiJob(job.id), () => false); toast.success('后台任务已停止'); }
+    catch (error) { toast.error(error instanceof Error ? error.message : '停止失败，请重试'); }
+    finally { setStopping(false); }
+  };
+
+  const handlePauseOrResume = async () => {
+    if (!job || stopping) return;
+    setStopping(true);
+    try {
+      if (job.status === 'paused') void watchJob(await resumeAiJob(job.id));
+      else await receiveJob(await pauseAiJob(job.id), () => false);
+    } catch (error) { toast.error(error instanceof Error ? error.message : '任务状态更新失败'); }
+    finally { setStopping(false); }
+  };
+
   const handleGenerate = async () => {
     if (readingContext) { toast.info('请等待上下文文件读取完成'); return; }
-    if (draft?.status === 'generating') {
+    if (draft?.status === 'generating' || jobActive || job?.status === 'paused') {
       toast.info('当前草稿仍在生成，请稍候');
       return;
     }
@@ -248,6 +354,7 @@ const AiTrackingDraftPanel = ({
         actorId,
         actorLarkId,
         selectedEventClientIds: Array.from(selectedIds),
+        selectedParamNamesByEvent: Object.fromEntries(Array.from(selectedIds, (id: string) => [id, selectedParams[id] || []])),
       });
       toast.success(`已写入 ${result.createdEventCount} 个事件、${result.createdParamCount} 个参数`);
       setDraftDialogOpen(false);
@@ -323,24 +430,27 @@ const AiTrackingDraftPanel = ({
               type="button"
               size="sm"
               className="h-8 rounded-full"
-              disabled={!canEdit || !ready || loading || readingContext || draft?.status === 'generating'}
+              disabled={!canEdit || !ready || loading || readingContext || job?.status === 'paused' || jobActive || draft?.status === 'generating'}
               onClick={() => void handleGenerate()}
             >
-              {loading || draft?.status === 'generating' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-              {loading || draft?.status === 'generating' ? '生成中...' : draft ? '生成新版' : auth?.authorized ? '生成初稿' : '授权并生成初稿'}
+              {loading || jobActive || draft?.status === 'generating' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+              {loading || jobActive || draft?.status === 'generating' ? '生成中...' : draft ? '生成新版' : auth?.authorized ? '生成初稿' : '授权并生成初稿'}
             </Button>
           </div>
         </div>
-        <div className="mt-4">
-          <UploadDropzone key={detail.recordId} files={contextFiles} onChange={setContextFiles} onBusyChange={setReadingContext} disabled={!canEdit || loading || applying || draft?.status === 'generating'} />
-        </div>
-        {generationError && <p role="alert" className="mt-2 text-sm text-destructive">{generationError}</p>}
-        {loading && generationProgress && (
-          <p role="status" aria-live="polite" className="mt-2 text-sm text-muted-foreground">
-            {generationProgress.message}
-            {generationProgress.elapsedMs != null && ` · 已用时 ${Math.floor(generationProgress.elapsedMs / 1000)} 秒`}
-          </p>
-        )}
+        {monitorRun && <TaskMonitor key={monitorRun.startedAt} run={monitorRun}
+          onViewResult={draft?.status === 'draft' ? () => setDraftDialogOpen(true) : undefined}
+          onStop={jobActive || job?.status === 'paused' ? () => void handleStop() : undefined} stopping={stopping}
+          onPause={jobActive ? () => void handlePauseOrResume() : undefined}
+          onResume={job?.status === 'paused' ? () => void handlePauseOrResume() : undefined}
+          onRetry={canEdit && ready && !loading ? () => void handleGenerate() : undefined} />}
+        {monitorRun ? <details className="mt-4 text-xs text-muted-foreground">
+          <summary className="cursor-pointer py-1">补充上下文 · {contextFiles.length} 个文件</summary>
+          <div className="mt-2"><UploadDropzone key={detail.recordId} files={contextFiles} onChange={setContextFiles} onBusyChange={setReadingContext} disabled={!canEdit || loading || applying || jobActive || draft?.status === 'generating'} /></div>
+        </details> : <div className="mt-4">
+          <UploadDropzone key={detail.recordId} files={contextFiles} onChange={setContextFiles} onBusyChange={setReadingContext} disabled={!canEdit || loading || applying || jobActive || draft?.status === 'generating'} />
+        </div>}
+        {generationError && !monitorRun && <p role="alert" className="mt-2 text-sm text-destructive">{generationError}</p>}
         {config && !ready && (
           <div className="mt-2 flex items-start gap-1.5 text-xs text-amber-700">
             <TriangleAlert className="h-3.5 w-3.5" />
@@ -380,20 +490,18 @@ const AiTrackingDraftPanel = ({
       </Dialog>
 
       <Dialog open={draftDialogOpen} onOpenChange={setDraftDialogOpen}>
-        <DialogContent className="grid h-[min(88dvh,840px)] max-h-[calc(100dvh-2rem)] max-w-5xl grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden rounded-lg p-0">
+        <DialogContent className="grid h-[min(88dvh,840px)] max-h-[calc(100dvh-2rem)] max-w-5xl grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden rounded-xl bg-card p-0">
           {draft && (
             <>
               <DialogHeader className="shrink-0 border-b border-border px-5 py-4">
                 <div className="flex flex-wrap items-center gap-2">
-                  <DialogTitle className="text-base">AI 埋点草稿 v{draft.version}</DialogTitle>
-                  <Badge variant="outline" className="rounded-full text-xs">{draft.events.length} 个事件</Badge>
-                  <Badge variant="outline" className="rounded-full text-xs">{draft.model}</Badge>
+                  <DialogTitle className="text-base">评审 AI 草稿</DialogTitle>
                 </div>
                 <DialogDescription>{draft.prd.title || draft.prd.url}</DialogDescription>
               </DialogHeader>
 
-              <div className="min-h-0 overflow-y-auto overscroll-contain px-5 py-4">
-                <div className="space-y-4">
+              <div className="min-h-0 overflow-hidden">
+                <div className="h-full min-h-0">
                   {draft.status === 'generating' && (
                     <div className="flex min-h-48 flex-col items-center justify-center gap-3 border border-border bg-muted/20 text-sm text-muted-foreground">
                       <Loader2 className="h-6 w-6 animate-spin text-primary" />
@@ -407,108 +515,14 @@ const AiTrackingDraftPanel = ({
                       <div className="mt-2 whitespace-pre-wrap text-xs">{draft.failureMessage || '请稍后重新生成'}</div>
                     </div>
                   )}
-                  {draft.status === 'draft' && draft.governance && (
-                    <section className="space-y-2 border border-border bg-muted/20 px-3 py-3 text-xs">
-                      <div className="font-medium">正式库优先校验 · {draft.governance.primaryBoard}</div>
-                      <div>{draft.summary}</div>
-                      <div className="text-muted-foreground">已读取当前端正式事件 {draft.governance.counts.events} 条、参数 {draft.governance.counts.params} 条、公共属性 {draft.governance.counts.commonProps} 条、枚举 {draft.governance.counts.enums} 条</div>
-                      {draft.governance.checks.map((check) => (
-                        <div key={check.name}>{check.status === 'passed' ? '通过' : '待确认'}：{check.name} — {check.detail}</div>
-                      ))}
-                    </section>
-                  )}
-                  {draft.status === 'draft' && draft.events.map((event, index) => {
-                    const diff = draft.diffs.find((item) => item.eventClientId === event.clientId);
-                    return (
-                      <section key={event.clientId} className="border border-border bg-card">
-                        <div className="flex items-start gap-3 border-b border-border px-3 py-3">
-                          <Checkbox
-                            checked={selectedIds.has(event.clientId)}
-                            onCheckedChange={(checked) => setSelectedIds((previous) => {
-                              const next = new Set(previous);
-                              if (checked) next.add(event.clientId); else next.delete(event.clientId);
-                              return next;
-                            })}
-                            aria-label={`选择 ${event.evtId}`}
-                          />
-                          <div className="min-w-0 flex-1">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="font-mono text-xs font-medium text-foreground">{event.evtId}</span>
-                              <span className="text-xs text-muted-foreground">{event.eventName}</span>
-                              <Badge variant="outline" className="h-5 rounded-full px-1.5 text-xs">
-                                {event.reuseSource ? '复用正式事件' : diff?.scope === 'current_event' ? '填充当前事件' : '新增事件建议'}
-                              </Badge>
-                            </div>
-                          </div>
-                          <span className="text-xs text-muted-foreground">#{index + 1}</span>
-                        </div>
-
-                        <div className="grid gap-px bg-border sm:grid-cols-2 lg:grid-cols-3">
-                          <Spec label="优先级" value={event.priority} />
-                          <Spec label="端" value={event.platform} />
-                          <Spec label="处理方" value={event.handler} />
-                          <Spec label="事件定义" value={event.eventDefinition} />
-                          <Spec label="触发时机" value={event.triggerTiming} />
-                          <Spec label="本次需求补充说明" value={event.requestNotes || ''} />
-                          <Spec label="公共属性要求" value={event.commonProps} />
-                          <Spec label="版本" value={event.version} />
-                          <Spec label="最低版本" value={event.minVersion} />
-                          <Spec label="变更类型" value={event.changeType} />
-                          <Spec label="指标/使用场景" value={event.metricScenario || ''} />
-                          <Spec label="复用来源" value={event.reuseSource ? `${event.reuseSource.evtId}（${event.reuseSource.recordId}）：${event.reuseSource.modificationSummary}` : ''} />
-                          <Spec label="设计依据" value={(event.evidence || []).join('\n')} />
-                        </div>
-
-                        {event.uncertainties.length > 0 && (
-                          <div className="border-t border-border bg-amber-50/50 px-3 py-3 text-xs">
-                            <div className="mb-1 font-medium">待确认项</div>
-                            <div className="whitespace-pre-wrap">{event.uncertainties.join('\n')}</div>
-                          </div>
-                        )}
-
-                        <div className="overflow-x-auto border-t border-border">
-                          <table className="w-full min-w-[1080px] text-left text-xs">
-                            <thead className="bg-muted/40 text-muted-foreground">
-                              <tr>
-                                <th className="px-3 py-2 font-medium">参数名</th>
-                                <th className="px-3 py-2 font-medium">类型</th>
-                                <th className="px-3 py-2 font-medium">必传规则</th>
-                                <th className="px-3 py-2 font-medium">条件说明</th>
-                                <th className="px-3 py-2 font-medium">适用端</th>
-                                <th className="px-3 py-2 font-medium">定义</th>
-                                <th className="px-3 py-2 font-medium">枚举/范围</th>
-                                <th className="px-3 py-2 font-medium">默认值</th>
-                                <th className="px-3 py-2 font-medium">示例</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {event.params.map((param) => (
-                                <tr key={param.paramName} className="border-t border-border align-top">
-                                  <td className="px-3 py-2 font-mono">{param.paramName}</td>
-                                  <td className="px-3 py-2">{param.paramType}</td>
-                                  <td className="px-3 py-2">{param.requiredRule}</td>
-                                  <td className="px-3 py-2">{param.triggerCondition || '-'}</td>
-                                  <td className="px-3 py-2">{param.platform || '-'}</td>
-                                  <td className="max-w-64 px-3 py-2">{param.definition}{param.requestNotes && <div className="mt-1 whitespace-pre-wrap text-muted-foreground">本次需求说明：{param.requestNotes}</div>}{param.uncertainties.length > 0 && <div className="mt-1 whitespace-pre-wrap text-amber-700">待确认：{param.uncertainties.join('\n')}</div>}</td>
-                                  <td className="max-w-64 whitespace-pre-wrap px-3 py-2">{param.enumRange || '-'}</td>
-                                  <td className="px-3 py-2">{param.defaultValue || '-'}</td>
-                                  <td className="px-3 py-2">{param.example || '-'}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-
-                      </section>
-                    );
-                  })}
+                  {draft.status === 'draft' && <Suspense fallback={<p className="p-4 text-sm text-muted-foreground">正在加载评审视图…</p>}><AiDraftReview key={draft.id} draft={draft} selectedIds={selectedIds} onSelect={setSelectedIds} selectedParams={selectedParams} onSelectParams={(id: string, names: string[]) => setSelectedParams((previous) => ({ ...previous, [id]: names }))} disabled={applying} /></Suspense>}
                 </div>
               </div>
 
               <DialogFooter className="shrink-0 border-t border-border bg-background px-5 py-3">
                 <div className="mr-auto flex items-center gap-2 text-xs text-muted-foreground">
                   <FileCheck2 className="h-4 w-4" />
-                  已选择 {selectedIds.size} / {draft.events.length}
+                  将录入 {selectedIds.size} 个事件 · {countDraftParams(draft.events, selectedIds, selectedParams)} 个参数
                 </div>
                 <Button type="button" variant="outline" className="rounded-full" disabled={loading || applying || draft.status === 'generating'} onClick={() => void handleGenerate()}>
                   <RefreshCw className="h-4 w-4" />生成新版
@@ -527,15 +541,6 @@ const AiTrackingDraftPanel = ({
 };
 
 export default AiTrackingDraftPanel;
-
-function Spec({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="bg-card px-3 py-2">
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="mt-1 whitespace-pre-wrap text-xs text-foreground">{value || '-'}</div>
-    </div>
-  );
-}
 
 async function waitForDraftCompletion(
   recordId: string,

@@ -1,11 +1,6 @@
+import { Save, LockKeyhole } from '@client/src/components/kubai/product-icons';
 import { useState, useEffect } from 'react';
-import {
-  Save,
-  Loader2,
-  CheckCircle2,
-  LockKeyhole,
-  ChevronDown,
-} from 'lucide-react';
+import { Loader2, CheckCircle2, ChevronDown } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@client/src/components/ui/button';
 import { SaveChangesButton } from '@client/src/components/bencho/SaveChangesButton';

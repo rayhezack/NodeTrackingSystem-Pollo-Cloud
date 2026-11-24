@@ -1,6 +1,7 @@
+import { ClipboardCopy, Database, ExternalLink, RefreshCw } from '@client/src/components/kubai/product-icons';
 import { LiquidToggle } from '@client/src/components/bencho/LiquidToggle';
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, ChevronDown, ClipboardCopy, Database, ExternalLink, Loader2, RefreshCw } from "lucide-react";
+import { Check, ChevronDown, Loader2 } from 'lucide-react';
 import { toast } from "sonner";
 import { logger } from "@client/src/lib/logger";
 import { Button } from "@client/src/components/ui/button";

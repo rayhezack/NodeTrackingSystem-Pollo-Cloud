@@ -1,6 +1,7 @@
+import { Trash2 } from '@client/src/components/kubai/product-icons';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { AlertTriangle, Trash2 } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
 import {
   Dialog,
   DialogContent,

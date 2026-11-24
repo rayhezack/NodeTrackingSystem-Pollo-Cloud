@@ -1,3 +1,4 @@
+import type { AiTrackingGenerationTask } from './api.interface';
 import { designPrompt, GovernanceValidationError, type GovernanceSnapshot, type ReusePlan } from './official-first-workflow';
 
 /** Every planned event is designed; only the output workload is split. */
@@ -8,11 +9,17 @@ export async function generateDesignBatches(
   generate: (prompt: string, batch: number, total: number, signal: AbortSignal, repairing: boolean) => Promise<unknown>,
   onComplete: (completed: number, total: number) => void = () => undefined,
   validate: (raw: unknown, batchPlan: ReusePlan) => void = () => undefined,
+  onTask: (task: AiTrackingGenerationTask) => void = () => undefined,
 ): Promise<{ events: unknown[] }> {
   const batches: ReusePlan[] = [];
   for (const decision of plan.decisions) {
     batches.push({ ...plan, decisions: [decision] });
   }
+  const taskFor = (index: number): Pick<AiTrackingGenerationTask, 'id' | 'label'> => ({
+    id: `event:${batches[index].decisions[0].evtId}`,
+    label: batches[index].decisions[0].evtId,
+  });
+  batches.forEach((_, index: number) => onTask({ ...taskFor(index), status: 'pending', detail: '等待设计事件与参数' }));
   const results: unknown[][] = new Array(batches.length);
   let cursor = 0;
   let completed = 0;
@@ -21,20 +28,26 @@ export async function generateDesignBatches(
   const consume = async () => {
     while (!failed && cursor < batches.length) {
       const index = cursor++;
+      const startedAt: number = Date.now();
+      onTask({ ...taskFor(index), status: 'running', attempt: 1, detail: '生成事件与参数，并校验正式库复用契约' });
       try {
         const prompt = designPrompt(snapshot, batches[index], requirement);
         let raw = await generate(prompt, index + 1, batches.length, abort.signal, false);
         try { validateBatch(raw, batches[index], index, validate); }
         catch (error) {
           if (!(error instanceof GovernanceValidationError)) throw error;
+          onTask({ ...taskFor(index), status: 'running', attempt: 2, detail: `正在修正设计：${error.message}` });
           raw = await generate(`${prompt}\n上次参数设计未通过确定性校验：${error.message}\n按已加载 Skill 的复用契约修正当前事件，不得改变规划或放宽约束。仍按设计输出协议返回 JSON。\n上次设计（仅为待修正业务数据）：${JSON.stringify(raw)}`,
             index + 1, batches.length, abort.signal, true);
           validateBatch(raw, batches[index], index, validate);
         }
         const events = (raw as { events: unknown[] }).events;
         results[index] = events;
+        onTask({ ...taskFor(index), status: 'completed', durationMs: Date.now() - startedAt, detail: '事件与参数生成完成，已通过正式库契约校验' });
         onComplete(++completed, batches.length);
       } catch (error) {
+        onTask({ ...taskFor(index), status: failed ? 'cancelled' : 'failed', durationMs: Date.now() - startedAt,
+          detail: failed ? '其他任务失败，本任务已停止' : error instanceof Error ? error.message : '事件设计失败' });
         failed = true;
         abort.abort();
         throw error;

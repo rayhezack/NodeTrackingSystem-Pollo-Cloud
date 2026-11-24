@@ -1,6 +1,8 @@
+import { createAiJob, getAiJob, listAiJobs, cancelAiJob, pauseAiJob, resumeAiJob, runAiJob, dispatchAiJobs, getAiJobResult } from './ai-jobs';
 import { TrackingEnumError } from '../shared/tracking-enums';
 import { isBaseMutation, withBaseWriteGuard } from './base-write-guard';
 import { BaseFieldValidationError, searchBitableRecords } from './feishu-bitable';
+import { FeishuRequestError } from './feishu-response';
 import { streamingGenerationResponse } from './ai-generation-response';
 import {
   aiOAuthCallbackHtml,
@@ -86,6 +88,11 @@ const app = {
   async fetch(request: Request, env: WorkerEnv = {}): Promise<Response> {
     const url = new URL(request.url);
 
+    if (url.pathname === '/api/cron/ai-jobs') {
+      if (request.headers.get('x-pollocloud-trigger') !== 'cron') return json({ message: 'Forbidden' }, 403);
+      return json(await dispatchAiJobs(env, url.origin));
+    }
+
     if (request.method === 'GET' && url.pathname === '/api/health') {
       return json({ status: 'ok' });
     }
@@ -142,6 +149,31 @@ const app = {
         const applyDraftMatch = url.pathname.match(/^\/api\/tracking\/ai\/records\/([^/]+)\/drafts\/([^/]+)\/apply$/);
         if (request.method === 'POST' && applyDraftMatch) {
           return json(await applyAiDraft(env, user.id, decodeURIComponent(applyDraftMatch[1]), decodeURIComponent(applyDraftMatch[2]), await request.json() as ApplyAiTrackingDraftRequest));
+        }
+        if (url.pathname === '/api/tracking/ai/jobs' && request.method === 'GET') {
+          return json(await listAiJobs(env, user.id, url.searchParams.get('recordId') || undefined));
+        }
+        const jobCreateMatch = url.pathname.match(/^\/api\/tracking\/ai\/records\/([^/]+)\/jobs$/);
+        if (jobCreateMatch && request.method === 'POST') {
+          return json(await createAiJob(env, user.id, decodeURIComponent(jobCreateMatch[1]), await request.json() as GenerateAiTrackingDraftRequest, url.origin), 202);
+        }
+        const jobMatch = url.pathname.match(/^\/api\/tracking\/ai\/jobs\/([^/]+)(?:\/(run|cancel|pause|resume|result))?$/);
+        if (jobMatch) {
+          const id = decodeURIComponent(jobMatch[1]);
+          if (request.method === 'GET' && !jobMatch[2]) return json(await getAiJob(env, user.id, id));
+          if (request.method === 'GET' && jobMatch[2] === 'result') return json(await getAiJobResult(env, user.id, id));
+          if (request.method === 'POST' && jobMatch[2] === 'pause') return json(await pauseAiJob(env, user.id, id));
+          if (request.method === 'POST' && jobMatch[2] === 'resume') return json(await resumeAiJob(env, user.id, id));
+          if (request.method === 'POST' && jobMatch[2] === 'cancel') return json(await cancelAiJob(env, user.id, id));
+          if (request.method === 'POST' && jobMatch[2] === 'run') {
+            await getAiJob(env, user.id, id);
+            // This connection belongs to the app task service, never a route component.
+            // Disconnect is not a cancellation request. The cron dispatcher resumes expired leases.
+            return streamingGenerationResponse(async () => {
+              await runAiJob(env, user.id, id, url.origin);
+              return getAiJob(env, user.id, id);
+            }, { format: 'ndjson', timeoutMs: 620_000 });
+          }
         }
         const generateDraftMatch = url.pathname.match(/^\/api\/tracking\/ai\/records\/([^/]+)\/drafts$/);
         if (request.method === 'POST' && generateDraftMatch) {
@@ -283,7 +315,7 @@ const app = {
           pageToken: url.searchParams.get('pageToken') || undefined,
         }));
       } catch (error) {
-        return json({ message: error instanceof Error ? error.message : 'Query library request failed' }, 502);
+        return json({ message: error instanceof Error ? error.message : 'Query library request failed' }, error instanceof FeishuRequestError ? error.status : 502);
       }
     }
 
@@ -294,7 +326,7 @@ const app = {
       try {
         return json(await getOfficialParams(env, decodeURIComponent(officialParamsMatch[1])));
       } catch (error) {
-        return json({ message: error instanceof Error ? error.message : 'Query library request failed' }, 502);
+        return json({ message: error instanceof Error ? error.message : 'Query library request failed' }, error instanceof FeishuRequestError ? error.status : 502);
       }
     }
 

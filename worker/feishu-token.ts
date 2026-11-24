@@ -1,5 +1,6 @@
 import type { BaseWriteState } from './base-write-state';
 import type { D1Database } from './ai-tracking';
+import { fetchFeishuJson } from './feishu-response';
 
 export type FeishuCredentials = { BASE_WRITE_STATE?: BaseWriteState; DB?: D1Database; FEISHU_APP_ID?: string; FEISHU_APP_SECRET?: string };
 type FetchLike = typeof fetch;
@@ -23,15 +24,12 @@ export async function getFeishuTenantToken(credentials: FeishuCredentials, fetch
 }
 
 async function requestFeishuTenantToken(appId: string, appSecret: string, fetchImpl: FetchLike): Promise<string> {
-  const response = await fetchImpl('https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal', {
+  const payload = await fetchFeishuJson<{ tenant_access_token?: string; expire?: number }>(fetchImpl, 'https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ app_id: appId, app_secret: appSecret }),
-  });
-  const payload = await response.json() as { code?: number; msg?: string; tenant_access_token?: string; expire?: number };
-  if (!response.ok || payload.code !== 0 || !payload.tenant_access_token) {
-    throw new Error(`Feishu token request failed: ${response.status} ${payload.msg || 'unknown error'}`);
-  }
+  }, 'Feishu token request failed');
+  if (!payload.tenant_access_token) throw new Error('Feishu token request failed: missing tenant access token');
   tokenCache = { appId, token: payload.tenant_access_token, expiresAt: Date.now() + Math.max((payload.expire || 0) - 60, 30) * 1000 };
   return tokenCache.token;
 }

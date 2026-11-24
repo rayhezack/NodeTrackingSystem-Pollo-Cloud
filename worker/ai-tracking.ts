@@ -1,3 +1,4 @@
+import { selectAiDraftEvents } from '../shared/ai-draft-selection';
 import type {
   AiFeishuAuthStatus,
   AiTrackingConfigStatus,
@@ -158,7 +159,18 @@ export async function generateAiDraft(
   fetchImpl: FetchLike = fetch,
   progress: (value: AiTrackingGenerationProgress) => void = () => undefined,
   generationSignal?: AbortSignal,
+  checkpoint?: { get(key: string): unknown; put(key: string, value: unknown): Promise<void> },
 ): Promise<GenerateAiTrackingDraftResponse> {
+  const model = async (prompt: string, modelFetch: FetchLike, tokens = 12000, stage: 'planning' | 'design' = 'design'): Promise<unknown> => {
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${env.AI_MODEL || 'kimi-k3'}:${loadTrackingDesignSkill(stage)}:${prompt}`));
+    const key = base64Url(new Uint8Array(digest));
+    const cached = checkpoint?.get(key);
+    if (cached !== undefined) return cached;
+    const result = await generateModelJson(env, prompt, modelFetch, tokens, stage);
+    generationSignal?.throwIfAborted();
+    await checkpoint?.put(key, result);
+    return result;
+  };
   const scopedFetch = (signal: AbortSignal): FetchLike => (input, init) => fetchImpl(input, {
     ...init, signal: init?.signal ? AbortSignal.any([signal, init.signal]) : signal,
   });
@@ -198,7 +210,7 @@ export async function generateAiDraft(
   try { plan = await generateReusePlan(snapshot, requirement, (prompt) => {
     const label = ++planningAttempt === 1 ? '对照正式库规划复用' : '修正复用规划';
     progress({ stage: 'planning', message: label });
-    return runGenerationStage(label, 90_000, (signal) => generateModelJson(env, prompt, scopedFetch(signal), 12000, 'planning'));
+    return runGenerationStage(label, 90_000, (signal) => model(prompt, scopedFetch(signal), 12000, 'planning'));
   }); }
   catch (error) { throw governanceWriteError(error); }
   const version = (await latestDraft(env, actorId, recordId))?.version || 0;
@@ -211,10 +223,11 @@ export async function generateAiDraft(
         const label = `${repairing ? '修正参数设计' : '生成事件与参数'}（第${batch}/${total}批）`;
         if (repairing) progress({ stage: 'design_repair', message: label });
         return runGenerationStage(label, 120_000,
-          (signal) => generateModelJson(env, prompt, scopedFetch(AbortSignal.any([signal, batchSignal]))));
+          (signal) => model(prompt, scopedFetch(AbortSignal.any([signal, batchSignal]))));
       },
       (completed, total) => progress({ stage: 'design', message: `生成事件与参数（${completed}/${total} 批完成）`, completed, total }),
-      (value, batchPlan) => { enforceGovernance(normalizeModelEvents(compileDesignResponse(value, snapshot, batchPlan), detail), snapshot, batchPlan); });
+      (value, batchPlan) => { enforceGovernance(normalizeModelEvents(compileDesignResponse(value, snapshot, batchPlan), detail), snapshot, batchPlan); },
+      (task) => progress({ stage: 'design', message: '生成事件与参数', task }));
   } catch (error) { throw governanceWriteError(error); }
   progress({ stage: 'validation', message: '统一校验事件、参数与正式库复用规则' });
   let events;
@@ -256,9 +269,10 @@ export async function applyAiDraft(
   const draft = (await getAiDraft(env, actorId, recordId, draftId)).draft;
   if (!draft) throw new TrackingWriteError('AI 草稿不存在或已过期', 404);
   if (draft.status === 'applied') return { success: true, draftId, appliedRecordIds: draft.appliedRecordIds || [], createdEventCount: draft.appliedRecordIds?.length || 0, createdParamCount: draft.appliedParamCount || 0 };
-  const selected = new Set(body.selectedEventClientIds || draft.events.map((event) => event.clientId));
-  const events = draft.events.filter((event) => selected.has(event.clientId));
-  if (!events.length) throw new TrackingWriteError('至少选择一个埋点事件', 400);
+  let selection: ReturnType<typeof selectAiDraftEvents>;
+  try { selection = selectAiDraftEvents(draft.events, body); }
+  catch (error) { throw new TrackingWriteError(error instanceof Error ? error.message : '草稿选择不正确', 400); }
+  const events = selection.events;
   const detail = (await getTrackingDetail(env, recordId, actorId, fetchImpl)).data;
   if (!detail.permissions.canEditDesign) throw new TrackingWriteError('当前用户无埋点设计权限', 403);
   const snapshot = await getOfficialGovernanceSnapshot(env, detail.source, fetchImpl);
@@ -269,7 +283,7 @@ export async function applyAiDraft(
   } catch (error) {
     throw new TrackingWriteError(error instanceof Error ? error.message : '正式库校验失败', 409);
   }
-  const result = await applyAiDraftEvents(env, recordId, checkedEvents, actorId, fetchImpl);
+  const result = await applyAiDraftEvents(env, recordId, selection.project(checkedEvents), actorId, fetchImpl);
   draft.status = 'applied';
   draft.appliedRecordIds = result.appliedRecordIds;
   draft.appliedParamCount = result.createdParamCount;
@@ -396,6 +410,13 @@ function normalizeReuseSource(value: unknown): AiTrackingDraftEvent['reuseSource
 
 function governanceWriteError(error: unknown): Error {
   return error instanceof GovernanceValidationError ? new TrackingWriteError(`正式库治理校验未通过：${error.message}`, 422) : error instanceof Error ? error : new Error('正式库校验失败');
+}
+
+export async function encodeAiJobPayload(env: AiWorkerEnv, id: string, value: unknown): Promise<string> {
+  return encodeDraftPayload(JSON.stringify(value), id, env.STORAGE, (text) => encrypt(env, text));
+}
+export async function decodeAiJobPayload(env: AiWorkerEnv, payload: string): Promise<unknown> {
+  return decodeDraftPayload(payload, env.STORAGE, (text) => decrypt(env, text));
 }
 
 async function persistDraft(env: AiWorkerEnv, actorId: string, draft: AiTrackingDraft): Promise<void> {

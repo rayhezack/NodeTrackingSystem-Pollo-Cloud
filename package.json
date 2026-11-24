@@ -35,8 +35,8 @@
     "precommit": "npm run skill:tracking:check && node scripts/hooks/run-precommit.js",
     "postinstall": "npx -y @lark-apaas/fullstack-cli@latest action-plugin init",
     "skill:tracking:prepare": "node scripts/prepare-tracking-skill.mjs",
-    "skill:tracking:check": "node scripts/prepare-tracking-skill.mjs --check",
-    "prebuild:pollocloud": "npm run skill:tracking:prepare",
+    "skill:tracking:check": "node scripts/prepare-tracking-skill.mjs --check && node scripts/prepare-kubai-runtime.mjs --check",
+    "prebuild:pollocloud": "npm run skill:tracking:prepare && node scripts/prepare-kubai-runtime.mjs && astryx theme build client/src/components/draft-review/review-theme.ts",
     "prebuild:server": "npm run skill:tracking:prepare",
     "predev": "npm run skill:tracking:prepare",
     "predev:server": "npm run skill:tracking:prepare",
@@ -44,6 +44,8 @@
     "dev:local": "node ./scripts/dev-local.js"
   },
   "dependencies": {
+    "@astryxdesign/cli": "^0.7.16",
+    "@astryxdesign/core": "^0.7.16",
     "@lark-apaas/fullstack-nestjs-core": "^1.1.69",
     "@nestjs/axios": "^4.0.1",
     "@nestjs/common": "^10.4.20",

@@ -2,7 +2,7 @@ import { compileDesignResponse } from '../../shared/ai-design-compiler';
 import { generateDesignBatches } from '../../shared/ai-design-batches';
 import type { GovernanceSnapshot, ReusePlan } from '../../shared/official-first-workflow';
 import { enforceGovernance, GovernanceValidationError } from '../../shared/official-first-workflow';
-import type { AiTrackingDraftEvent, OfficialEvent } from '../../shared/api.interface';
+import type { AiTrackingDraftEvent, OfficialEvent, AiTrackingGenerationTask } from '../../shared/api.interface';
 
 const snapshot: GovernanceSnapshot = {
   source: 'web', events: [], contexts: [], commonProps: [], enums: [], fingerprint: 'test',
@@ -146,6 +146,25 @@ describe('batched event design', () => {
     expect(generate).toHaveBeenCalledTimes(2);
     expect(generate.mock.calls[0][3].aborted).toBe(true);
     expect(onComplete).not.toHaveBeenCalled();
+  });
+
+  it('emits real task lifecycles with retry and duration after validation', async () => {
+    const updates: AiTrackingGenerationTask[] = [];
+    const one = { ...plan, decisions: plan.decisions.slice(0, 1) };
+    const validate = jest.fn().mockImplementationOnce(() => { throw new GovernanceValidationError('需要修正'); });
+    await generateDesignBatches(snapshot, one, {}, async () => ({ events: [{ evtId: 'event_1' }] }), undefined, validate,
+      (task) => updates.push(task));
+    expect(updates.map((task) => task.status)).toEqual(['pending', 'running', 'running', 'completed']);
+    expect(updates[2]).toMatchObject({ id: 'event:event_1', attempt: 2 });
+    expect(updates[3].durationMs).toEqual(expect.any(Number));
+  });
+
+  it('emits failure instead of completion when a model call fails', async () => {
+    const updates: AiTrackingGenerationTask[] = [];
+    await expect(generateDesignBatches(snapshot, { ...plan, decisions: plan.decisions.slice(0, 1) }, {},
+      async () => { throw new Error('连接失败'); }, undefined, undefined, (task) => updates.push(task))).rejects.toThrow('连接失败');
+    expect(updates.map((task) => task.status)).toEqual(['pending', 'running', 'failed']);
+    expect(updates[2].detail).toBe('连接失败');
   });
 
   it('does not retry model connection or deadline failures', async () => {

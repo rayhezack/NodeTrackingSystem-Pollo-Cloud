@@ -1,5 +1,6 @@
+import { ClipboardList, Copy, ExternalLink } from '@client/src/components/kubai/product-icons';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertCircle, ClipboardList, Copy, ExternalLink, Loader2 } from 'lucide-react';
+import { AlertCircle, Loader2 } from 'lucide-react';
 import { logger } from '@client/src/lib/logger';
 import { toast } from 'sonner';
 import { Badge } from '@client/src/components/ui/badge';

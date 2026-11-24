@@ -71,6 +71,66 @@ describe('PolloCloud query library', () => {
     expect(JSON.parse(fetchMock.mock.calls[2][1].body)).toEqual(expect.objectContaining({ view_id: 'vewiUagCFI' }));
   });
 
+  it('keeps event-specific snapshots separate and preserves linked-only rows across pages', async () => {
+    const searches: Array<{ table: string; body: any; cursor: string | null }> = [];
+    const transport = jest.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = new URL(String(input));
+      if (url.pathname.includes('/auth/')) return jsonResponse({ code: 0, tenant_access_token: 'token', expire: 7200 });
+      if (!url.pathname.endsWith('/search')) {
+        const id = url.pathname.split('/').pop();
+        return jsonResponse({ code: 0, data: { record: { record_id: id, fields: { evt_id: id } } } });
+      }
+      const body = JSON.parse(String(init?.body));
+      const table = url.pathname.match(/tables\/([^/]+)/)![1];
+      searches.push({ table, body, cursor: url.searchParams.get('page_token') });
+      const id = body.filter.conditions.find((item: any) => item.field_name === 'evt_id').value[0];
+      if (table === 'tblEYv9lGZeenbT2') {
+        const hasMore = !url.searchParams.has('page_token');
+        return jsonResponse({ code: 0, data: { items: hasMore ? [] : [{ record_id: `param-${id}`, fields: {
+          参数主键: `${id}.page`, 参数名: 'page', 关联事件: [id],
+        } }], has_more: hasMore, ...(hasMore ? { page_token: 'next' } : {}) } });
+      }
+      return jsonResponse({ code: 0, data: { items: [], has_more: false } });
+    });
+    for (const id of ['event-a', 'event-b', 'event-a']) {
+      const result = await getOfficialParams(credentials, `app:${id}`, transport);
+      expect(result.items.map((item) => item.paramKey)).toEqual([`${id}.page`]);
+    }
+    const paramSearches = searches.filter((item) => item.table === 'tblEYv9lGZeenbT2');
+    expect(paramSearches).toHaveLength(4);
+    expect(paramSearches[0].body.filter).toEqual(paramSearches[1].body.filter);
+    expect(paramSearches[2].body.filter).toEqual(paramSearches[3].body.filter);
+    expect(paramSearches[0].body.filter).not.toEqual(paramSearches[2].body.filter);
+    expect(searches.filter((item) => item.table === 'tblQ8Ph3N8GJHeVA')).toHaveLength(2);
+  });
+
+  it('does not scan the enum dictionary for an event with no active parameters', async () => {
+    const transport = jest.fn()
+      .mockResolvedValueOnce(jsonResponse({ code: 0, tenant_access_token: 'token', expire: 7200 }))
+      .mockResolvedValueOnce(jsonResponse({ code: 0, data: { record: { record_id: 'event', fields: { evt_id: 'example' } } } }))
+      .mockResolvedValueOnce(jsonResponse({ code: 0, data: { items: [{ record_id: 'old', fields: { evt_id: 'example', 参数名: 'old', 参数状态: '已废弃' } }], has_more: false } }));
+    await expect(getOfficialParams(credentials, 'web:event', transport)).resolves.toMatchObject({ items: [], total: 0 });
+    expect(transport).toHaveBeenCalledTimes(3);
+  });
+
+  it('propagates an enum timeout instead of reporting empty parameters, and allows a fresh retry', async () => {
+    let enumAttempts = 0;
+    const transport = jest.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes('/auth/')) return jsonResponse({ code: 0, tenant_access_token: 'token', expire: 7200 });
+      if (!url.includes('/search')) return jsonResponse({ code: 0, data: { record: { record_id: 'event', fields: { evt_id: 'example' } } } });
+      if (url.includes('tbl2KEj2zyg8bOmk')) {
+        enumAttempts += 1;
+        if (enumAttempts === 1) return new Response('error code: 504', { status: 504 });
+        return jsonResponse({ code: 0, data: { items: [], has_more: false } });
+      }
+      return jsonResponse({ code: 0, data: { items: [{ record_id: 'param', fields: { evt_id: 'example', 参数名: 'page' } }], has_more: false } });
+    });
+    await expect(getOfficialParams(credentials, 'web:event', transport)).rejects.toMatchObject({ status: 504 });
+    await expect(getOfficialParams(credentials, 'web:event', transport)).resolves.toMatchObject({ total: 1 });
+    expect(enumAttempts).toBe(2);
+  });
+
   it('reads official parameters linked to an event', async () => {
     const fetchMock = jest.fn()
       .mockResolvedValueOnce(jsonResponse({ code: 0, tenant_access_token: 'tenant-token', expire: 7200 }))
@@ -124,6 +184,15 @@ describe('PolloCloud query library', () => {
     ]);
     expect(result.baseLink).toContain('tblEYv9lGZeenbT2');
     expect(JSON.parse(fetchMock.mock.calls[2][1].body)).toEqual(expect.objectContaining({ view_id: 'vewiUagCFI' }));
+    expect(JSON.parse(fetchMock.mock.calls[2][1].body).filter).toEqual({
+      conjunction: 'or', conditions: [
+        { field_name: '关联事件', operator: 'contains', value: ['event-1'] },
+        { field_name: 'evt_id', operator: 'is', value: ['home_show'] },
+      ],
+    });
+    expect(JSON.parse(fetchMock.mock.calls[3][1].body).filter).toEqual({
+      conjunction: 'and', conditions: [{ field_name: 'evt_id', operator: 'is', value: ['home_show'] }],
+    });
   });
 
   it('finds events through parameter enum values and excludes retired parameters', async () => {

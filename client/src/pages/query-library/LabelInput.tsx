@@ -1,6 +1,7 @@
+import { Search } from '@client/src/components/kubai/product-icons';
 import { useId, useLayoutEffect, useRef, useState } from "react";
 import type { CSSProperties, InputHTMLAttributes } from "react";
-import { Search } from "lucide-react";
+
 
 /* ══ Label input ══════════════════════════════════════════
    A field whose label is its placeholder until you are in it.

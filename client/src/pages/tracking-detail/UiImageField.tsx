@@ -1,5 +1,6 @@
+import { ExternalLink, Eye, ImageIcon, Upload } from '@client/src/components/kubai/product-icons';
 import { useEffect, useState, useRef } from 'react';
-import { ExternalLink, Eye, Image as ImageIcon, Loader2, Upload, X } from 'lucide-react';
+import { Loader2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@client/src/components/ui/button';
 import { Input } from '@client/src/components/ui/input';

@@ -2,6 +2,7 @@ import { trackBaseMutation } from './base-write-state';
 export class BaseFieldValidationError extends Error { constructor(message: string) { super(message); this.name = 'BaseFieldValidationError'; } }
 import { reserveBaseCreates, confirmBaseCreates } from './base-write-identity';
 import { getFeishuTenantToken, resetFeishuTokenCache, type FeishuCredentials } from './feishu-token';
+import { fetchFeishuJson, readFeishuJson } from './feishu-response';
 
 export const BITABLE_INSTANCES = {
   workbench: { appToken: 'Kgy0b4bvmaJSK8sjQDscUrNJnOf', tableId: 'tblqHhr5aZwr4QOZ' },
@@ -38,6 +39,11 @@ export interface BitableRecordPage {
   total?: number;
 }
 
+export interface BitableFilter {
+  conjunction: 'and' | 'or';
+  conditions: Array<{ field_name: string; operator: string; value: string[] }>;
+}
+
 export async function searchBitableRecords(
   env: FeishuCredentials,
   instance: string,
@@ -51,7 +57,7 @@ export async function searchBitableRecords(
   const pageSize = Math.min(Math.max(Math.trunc(options.pageSize || 100), 1), 500);
   const query = new URLSearchParams({ user_id_type: 'user_id', page_size: String(pageSize) });
   if (options.pageToken) query.set('page_token', options.pageToken);
-  const response = await fetchImpl(
+  const payload = await fetchFeishuJson<{ data?: unknown }>(fetchImpl,
     `https://open.feishu.cn/open-apis/bitable/v1/apps/${config.appToken}/tables/${config.tableId}/records/search?${query}`,
     {
       method: 'POST',
@@ -60,19 +66,15 @@ export async function searchBitableRecords(
         'Content-Type': 'application/json',
       },
       body: '{}',
-    },
+    }, 'Feishu bitable search failed',
   );
-  const payload = await response.json() as { code?: number; msg?: string; data?: unknown };
-  if (!response.ok || payload.code !== 0) {
-    throw new Error(`Feishu bitable search failed: ${response.status} ${payload.msg || 'unknown error'}`);
-  }
   return payload.data ?? {};
 }
 
 export async function searchBitableRecordPage(
   env: FeishuCredentials,
   instance: BitableInstanceKey,
-  options: { pageSize?: number; pageToken?: string; fieldNames?: readonly string[]; viewId?: string; filter?: { conjunction: 'and' | 'or'; conditions: Array<{ field_name: string; operator: string; value: string[] }> } } = {},
+  options: { pageSize?: number; pageToken?: string; fieldNames?: readonly string[]; viewId?: string; filter?: BitableFilter } = {},
   fetchImpl: FetchLike = fetch,
 ): Promise<BitableRecordPage> {
   const config = BITABLE_INSTANCES[instance];
@@ -87,27 +89,21 @@ export async function searchBitableRecordPage(
     ...(options.viewId ? { view_id: options.viewId } : {}),
     ...(options.filter ? { filter: options.filter } : {}),
   };
-  const response = await fetchImpl(
-    `https://open.feishu.cn/open-apis/bitable/v1/apps/${config.appToken}/tables/${config.tableId}/records/search?${query}`,
-    {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    },
-  );
-  const payload = await response.json() as {
-    code?: number;
-    msg?: string;
+  const payload = await fetchFeishuJson<{
     data?: {
       items?: Array<{ record_id?: string; fields?: Record<string, unknown> }>;
       has_more?: boolean;
       page_token?: string;
       total?: number;
     };
-  };
-  if (!response.ok || payload.code !== 0) {
-    throw new Error(`Feishu bitable search failed: ${response.status} ${payload.msg || 'unknown error'}`);
-  }
+  }>(fetchImpl,
+    `https://open.feishu.cn/open-apis/bitable/v1/apps/${config.appToken}/tables/${config.tableId}/records/search?${query}`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }, 'Feishu bitable search failed',
+  );
   const data = payload.data || {};
   return {
     records: (data.items || []).map((item) => ({ id: item.record_id || '', record: item.fields || {} })).filter((item) => item.id),
@@ -125,19 +121,14 @@ export async function getBitableRecord(
 ): Promise<BitableRecord | null> {
   const config = BITABLE_INSTANCES[instance];
   const token = await getFeishuTenantToken(env, fetchImpl);
-  const response = await fetchImpl(
+  const payload = await fetchFeishuJson<{
+    data?: { record?: { record_id?: string; fields?: Record<string, unknown> } };
+  }>(fetchImpl,
     `https://open.feishu.cn/open-apis/bitable/v1/apps/${config.appToken}/tables/${config.tableId}/records/${encodeURIComponent(recordId)}?user_id_type=user_id`,
     { headers: { Authorization: `Bearer ${token}` } },
+    'Feishu bitable get record failed', { allowNotFound: true },
   );
-  if (response.status === 404) return null;
-  const payload = await response.json() as {
-    code?: number;
-    msg?: string;
-    data?: { record?: { record_id?: string; fields?: Record<string, unknown> } };
-  };
-  if (!response.ok || payload.code !== 0) {
-    throw new Error(`Feishu bitable get record failed: ${response.status} ${payload.msg || 'unknown error'}`);
-  }
+  if (!payload) return null;
   const record = payload.data?.record;
   return record ? { id: record.record_id || recordId, record: record.fields || {} } : null;
 }
@@ -163,14 +154,9 @@ export async function createBitableRecords(
       body: JSON.stringify({ records: normalized }),
     },
   );
-  const payload = await response.json() as {
-    code?: number;
-    msg?: string;
+  const payload = await readFeishuJson<{
     data?: { records?: Array<{ record_id?: string; fields?: Record<string, unknown> }> };
-  };
-  if (!response.ok || payload.code !== 0) {
-    throw new Error(`Feishu bitable create failed: ${response.status} ${payload.msg || 'unknown error'}`);
-  }
+  }>(response, 'Feishu bitable create failed');
   const returned = payload.data?.records || [];
   if (returned.length !== records.length || returned.some((record) => !record.record_id)) throw new Error('Feishu Base 批量写入返回数量或记录 ID 不完整，已停止归档');
   if (new Set(returned.map((record) => record.record_id)).size !== returned.length) throw new Error('Feishu Base 新增返回重复记录 ID');
@@ -202,14 +188,9 @@ export async function updateBitableRecords(
       body: JSON.stringify({ records: normalized }),
     },
   );
-  const payload = await response.json() as {
-    code?: number;
-    msg?: string;
+  const payload = await readFeishuJson<{
     data?: { records?: Array<{ record_id?: string; fields?: Record<string, unknown> }> };
-  };
-  if (!response.ok || payload.code !== 0) {
-    throw new Error(`Feishu bitable update failed: ${response.status} ${payload.msg || 'unknown error'}`);
-  }
+  }>(response, 'Feishu bitable update failed');
   const returned = payload.data?.records || [];
   if (returned.length !== records.length || returned.some((record) => !record.record_id)) throw new Error('Feishu Base 批量写入返回数量或记录 ID 不完整，已停止归档');
   const expectedIds = new Set(records.map((record) => record.id));
@@ -241,10 +222,7 @@ export async function deleteBitableRecords(
       body: JSON.stringify({ records: ids }),
     },
   );
-  const payload = await response.json() as { code?: number; msg?: string };
-  if (!response.ok || payload.code !== 0) {
-    throw new Error(`Feishu bitable delete failed: ${response.status} ${payload.msg || 'unknown error'}`);
-  }
+  await readFeishuJson(response, 'Feishu bitable delete failed');
   });
 }
 

@@ -1,4 +1,5 @@
-import { ChevronRight, Inbox } from 'lucide-react';
+import { Inbox } from '@client/src/components/kubai/product-icons';
+import { ChevronRight } from 'lucide-react';
 import { Button } from '@client/src/components/ui/button';
 import { Badge } from '@client/src/components/ui/badge';
 import { Skeleton } from '@client/src/components/ui/skeleton';

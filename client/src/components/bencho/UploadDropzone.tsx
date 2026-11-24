@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ChangeEvent, type DragEvent } from 'react';
 import { motion, useAnimationControls, useReducedMotion } from 'framer-motion';
-import { Check, Upload as UpIcon, X } from 'lucide-react';
+import { Upload as UpIcon } from '../kubai/product-icons';
+import { Check, X } from 'lucide-react';
 import { CONTEXT_MAX_CHARS, CONTEXT_MAX_FILES, validateContextFile, type UploadDocument } from './upload-context';
 export type { UploadDocument } from './upload-context';
 

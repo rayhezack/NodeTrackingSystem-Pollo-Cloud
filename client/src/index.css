@@ -1,4 +1,9 @@
+@layer reset, theme, base, astryx-base, astryx-theme, components, utilities;
+
 @import "tailwindcss";
+@import "@astryxdesign/core/reset.css";
+@import "@astryxdesign/core/astryx.css";
+@import "./components/draft-review/pollo-review.css";
 @import "tw-animate-css";
 @import "./tailwind-theme.css";
 @import "./typography.css";

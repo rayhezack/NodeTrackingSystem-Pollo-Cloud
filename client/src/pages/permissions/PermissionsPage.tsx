@@ -1,13 +1,6 @@
+import { RefreshCw, ShieldCheck } from '@client/src/components/kubai/product-icons';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  Check,
-  ChevronDown,
-  Loader2,
-  RefreshCw,
-  ShieldCheck,
-  Undo2,
-  X,
-} from 'lucide-react';
+import { Check, ChevronDown, Loader2, Undo2, X } from 'lucide-react';
 import {
   AnimatePresence,
   LayoutGroup,

@@ -1,5 +1,6 @@
+import { Search } from '@client/src/components/kubai/product-icons';
 import { useEffect, useId, useRef, useState } from 'react';
-import { Search, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { Input } from '@client/src/components/ui/input';
 
 interface SeekSearchProps {

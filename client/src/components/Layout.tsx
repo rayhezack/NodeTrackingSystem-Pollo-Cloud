@@ -1,6 +1,7 @@
+import { BarChart3, ClipboardList, History, LogOut, Search, ShieldCheck } from '@client/src/components/kubai/product-icons';
 import { useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
-import { BarChart3, ChevronDown, ClipboardList, History, LogOut, Search, ShieldCheck } from "lucide-react";
+import { ChevronDown } from 'lucide-react';
 import { useCurrentUser } from "@client/src/hooks/use-current-user";
 import { UserDisplay } from "@client/src/components/business-ui/user-display";
 import { EyeTracker } from "@client/src/components/bencho/EyeTracker";

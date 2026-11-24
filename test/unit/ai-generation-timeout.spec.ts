@@ -55,6 +55,20 @@ describe('AI generation deadlines and progress', () => {
     expect(updates).toEqual(['读取正文:2', '读取正文:10000']);
   });
 
+  it('does not replay a task lifecycle on a heartbeat', async () => {
+    const updates: Array<{ task?: { id: string }; elapsedMs?: number }> = [];
+    const body = [
+      { type: 'progress', stage: 'design', message: '设计', task: { id: 'event:a', label: 'a', status: 'completed' } },
+      { type: 'heartbeat', elapsedMs: 10000 },
+      { type: 'result', data: { draft: { id: 'draft-1' } } },
+    ].map((item) => JSON.stringify(item)).join('\n');
+    await readAiGenerationStream(new Response(body, { headers: { 'content-type': 'application/x-ndjson' } }),
+      (update) => updates.push(update));
+    expect(updates[0].task?.id).toBe('event:a');
+    expect(updates[1].task).toBeUndefined();
+    expect(updates[1].elapsedMs).toBe(10000);
+  });
+
   it('rejects a disconnected stream instead of reporting success for HTTP 200', async () => {
     const response = new Response('{"type":"heartbeat"}\n', { headers: { 'content-type': 'application/x-ndjson' } });
     await expect(readAiGenerationStream(response)).rejects.toThrow('初稿未完成');

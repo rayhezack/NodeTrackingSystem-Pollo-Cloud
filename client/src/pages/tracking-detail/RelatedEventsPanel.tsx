@@ -1,15 +1,6 @@
+import { GitBranch, Save, Search, Trash2, LockKeyhole } from '@client/src/components/kubai/product-icons';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import {
-  GitBranch,
-  Loader2,
-  Plus,
-  Save,
-  Search,
-  Trash2,
-  Undo2,
-  LockKeyhole,
-  ChevronDown,
-} from 'lucide-react';
+import { Loader2, Plus, Undo2, ChevronDown } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@client/src/components/ui/button';
 import {

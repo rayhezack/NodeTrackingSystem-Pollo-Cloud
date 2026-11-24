@@ -13,7 +13,9 @@ import {
   searchBitableRecordPage,
   type BitableInstanceKey,
   type BitableRecord,
+  type BitableFilter,
 } from './feishu-bitable';
+import { officialEventIdFilter, officialEventParamFilter } from './official-event-filter';
 import type { FeishuCredentials } from './feishu-token';
 import { readGovernanceSnapshot, type GovernanceSnapshot, type GovernanceTable } from '../shared/official-first-workflow';
 
@@ -144,10 +146,15 @@ export async function getOfficialParams(
     officialParamFields(ref.source),
     OFFICIAL_PARAM_VIEW_ID,
     fetchImpl,
+    officialEventParamFilter(ref.rawId, evtId),
   );
-  const enumRows = await searchAllRecords(credentials, ref.source === 'web' ? 'webEnumDictionary' : 'enumDictionary', ['evt_id', '参数名', '枚举值', '枚举状态', '关联正式参数'], undefined, fetchImpl);
-  const items = records
+  const eventParams = records
     .filter((item) => isOfficialParamForEvent(item, ref.rawId, evtId))
+    .filter((item) => cellText(item.record['参数状态']) !== '已废弃');
+  const enumRows = eventParams.length && evtId
+    ? await searchAllRecords(credentials, ref.source === 'web' ? 'webEnumDictionary' : 'enumDictionary', ['evt_id', '参数名', '枚举值', '枚举状态', '关联正式参数'], undefined, fetchImpl, officialEventIdFilter(evtId))
+    : [];
+  const items = eventParams
     .map((item) => {
       const param = toOfficialParam(item, ref.source);
       const values = dictionaryEnums(enumRows, evtId, param.paramName, item.id, 'official');
@@ -202,16 +209,17 @@ function searchAllRecords(
   fieldNames: readonly string[] | undefined,
   viewId: string | undefined,
   fetchImpl: FetchLike,
+  filter?: BitableFilter,
 ): Promise<BitableRecord[]> {
-  if (!fieldNames) return readAllRecords(credentials, instance, fieldNames, viewId, fetchImpl);
+  if (!fieldNames) return readAllRecords(credentials, instance, fieldNames, viewId, fetchImpl, filter);
   let cache = snapshotCaches.get(fetchImpl);
   if (!cache) { cache = new Map(); snapshotCaches.set(fetchImpl, cache); }
-  const key = JSON.stringify([credentials.FEISHU_APP_ID, credentials.FEISHU_APP_SECRET, instance, fieldNames, viewId]);
+  const key = JSON.stringify([credentials.FEISHU_APP_ID, credentials.FEISHU_APP_SECRET, instance, fieldNames, viewId, filter]);
   const hit = cache.get(key);
   if (hit && hit.expiresAt > Date.now()) return hit.pending;
   for (const [key, entry] of cache) if (entry.expiresAt <= Date.now()) cache.delete(key);
   if (cache.size >= 32) cache.delete(cache.keys().next().value!);
-  const entry = { expiresAt: Date.now() + 30_000, pending: readAllRecords(credentials, instance, fieldNames, viewId, fetchImpl) };
+  const entry = { expiresAt: Date.now() + 30_000, pending: readAllRecords(credentials, instance, fieldNames, viewId, fetchImpl, filter) };
   cache.set(key, entry);
   entry.pending.catch(() => { if (cache.get(key) === entry) cache.delete(key); });
   return entry.pending;
@@ -223,6 +231,7 @@ async function readAllRecords(
   fieldNames: readonly string[] | undefined,
   viewId: string | undefined,
   fetchImpl: FetchLike,
+  filter?: BitableFilter,
 ): Promise<BitableRecord[]> {
   const records: BitableRecord[] = [];
   let pageToken: string | undefined;
@@ -239,6 +248,7 @@ async function readAllRecords(
       pageSize: 500,
       pageToken,
       viewId,
+      filter,
     }, fetchImpl);
     records.push(...result.records);
     if (!result.hasMore) return records;

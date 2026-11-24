@@ -1,3 +1,4 @@
+import { selectAiDraftEvents } from '../../../shared/ai-draft-selection';
 import {
   BadRequestException,
   ForbiddenException,
@@ -311,9 +312,10 @@ export class AiTrackingService {
     if (draft.status === 'applying') throw new BadRequestException('该草稿正在应用，请勿重复提交');
     if (draft.status === 'failed') throw new BadRequestException('该草稿曾部分应用失败，请重新生成新版草稿后再操作');
 
-    const selectedIds = new Set(body.selectedEventClientIds || draft.events.map((event) => event.clientId));
-    let events = draft.events.filter((event) => selectedIds.has(event.clientId));
-    if (!events.length) throw new BadRequestException('至少选择一个埋点事件');
+    let selection: ReturnType<typeof selectAiDraftEvents>;
+    try { selection = selectAiDraftEvents(draft.events, body); }
+    catch (error) { throw new BadRequestException(error instanceof Error ? error.message : '草稿选择不正确'); }
+    let events = selection.events;
     assertNoRequestDuplicates(detail, events);
     const snapshot = await this.queryLibrary.getGovernanceSnapshot(detail.source);
     try {
@@ -325,7 +327,7 @@ export class AiTrackingService {
 
     draft.status = 'applying';
     try {
-      const result = await this.tracking.applyAiDraftEvents(recordId, events, actorId, actorLarkId);
+      const result = await this.tracking.applyAiDraftEvents(recordId, selection.project(events), actorId, actorLarkId);
       draft.status = 'applied';
       draft.appliedRecordIds = result.appliedRecordIds;
       draft.appliedParamCount = result.createdParamCount;

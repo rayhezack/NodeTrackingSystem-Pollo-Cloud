@@ -1,4 +1,5 @@
-import { ExternalLink, Loader2, RefreshCw, Search } from "lucide-react";
+import { ExternalLink, RefreshCw, Search } from '@client/src/components/kubai/product-icons';
+import { Loader2 } from 'lucide-react';
 import { Button } from "@client/src/components/ui/button";
 import { Input } from "@client/src/components/ui/input";
 import type { OfficialParam } from "@shared/api.interface";

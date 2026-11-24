@@ -1,5 +1,6 @@
+import { Database, Search, GitBranch } from '@client/src/components/kubai/product-icons';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Database, Loader2, Search, GitBranch } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@client/src/components/ui/badge';
 import { Button } from '@client/src/components/ui/button';
@@ -55,7 +56,13 @@ export default function ReuseOfficialEventDialog({
   const [progress, setProgress] = useState('');
   const [loading, setLoading] = useState(false);
   const [loadingParams, setLoadingParams] = useState(false);
+  const [paramsErrors, setParamsErrors] = useState<Record<string, string>>({});
+  const [paramsRetry, setParamsRetry] = useState(0);
   const [saving, setSaving] = useState(false);
+  const paramsError = selected ? paramsErrors[selected.recordId] : undefined;
+  const previewLoading = Boolean(selected && (loadingParams || (!paramsCache.current.has(selected.recordId) && !paramsError)));
+  const hasFailedChosen = Object.keys(chosen).some((id) => Boolean(paramsErrors[id]));
+  const paramsBlocked = hasFailedChosen || Boolean(selected && chosen[selected.recordId] && previewLoading);
 
   const fetchEvents = useCallback(async (kw = '', nextPage?: string) => {
     const requestId = ++searchId.current;
@@ -86,13 +93,14 @@ export default function ReuseOfficialEventDialog({
     setParams([]);
     setChosen({});
     setParamKeysByEvent({});
+    setParamsErrors({});
     paramsCache.current.clear();
     fetchEvents('');
     return () => { searchId.current += 1; };
   }, [open, fetchEvents]);
 
   useEffect(() => {
-    if (!selected) {
+    if (!open || !selected) {
       setParams([]);
       setLoadingParams(false);
       return;
@@ -101,15 +109,23 @@ export default function ReuseOfficialEventDialog({
     let cancelled = false;
     const loadParams = async () => {
       setLoadingParams(true);
+      setParamsErrors((previous) => {
+        const next = { ...previous };
+        delete next[selected.recordId];
+        return next;
+      });
       try {
         const cached = paramsCache.current.get(selected.recordId);
         const items = cached || (await getOfficialParams(selected.recordId)).items || [];
-        paramsCache.current.set(selected.recordId, items);
-        if (!cancelled) setParams(items);
+        if (!cancelled) {
+          paramsCache.current.set(selected.recordId, items);
+          setParams(items);
+        }
       } catch (error) {
         if (!cancelled) {
           const msg = error instanceof Error ? error.message : '参数加载失败';
           toast.error(msg);
+          setParamsErrors((previous) => ({ ...previous, [selected.recordId]: msg }));
           setParams([]);
         }
       } finally {
@@ -120,11 +136,11 @@ export default function ReuseOfficialEventDialog({
     return () => {
       cancelled = true;
     };
-  }, [selected]);
+  }, [open, selected, paramsRetry]);
 
   const handleReuse = async () => {
     const batch = Object.values(chosen);
-    if (!batch.length || saving) return;
+    if (!batch.length || saving || paramsBlocked) return;
     setSaving(true);
     let lastResult: ReuseOfficialEventResponse | undefined;
     let completed = 0;
@@ -268,7 +284,7 @@ export default function ReuseOfficialEventDialog({
                   <div className="px-4 py-3 text-xs text-muted-foreground">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <span>
-                        可选正式参数 {loadingParams ? '' : `(${params.length})`} · 已选择 {selectedParamKeys.length} 个
+                        可选正式参数 {previewLoading || paramsError ? '' : `(${params.length})`} · 已选择 {selectedParamKeys.length} 个
                       </span>
                       {params.length > 0 && (
                         <div className="flex items-center gap-2">
@@ -293,10 +309,18 @@ export default function ReuseOfficialEventDialog({
                     </div>
                   </div>
                   <div className="max-h-72 overflow-y-auto">
-                    {loadingParams ? (
+                    {previewLoading ? (
                       <div className="py-8 text-center text-xs text-muted-foreground">
                         <Loader2 className="mx-auto mb-2 h-4 w-4 animate-spin" />
                         正在加载参数...
+                      </div>
+                    ) : paramsError ? (
+                      <div role="alert" className="space-y-2 px-4 py-6 text-center text-xs">
+                        <p className="text-destructive">参数加载失败：{paramsError}</p>
+                        <p className="text-muted-foreground">尚未确认该事件的参数明细，请重试。</p>
+                        <Button variant="outline" size="sm" disabled={saving} onClick={() => setParamsRetry((value) => value + 1)}>
+                          重新加载参数
+                        </Button>
                       </div>
                     ) : params.length ? (
                       <Checklist className="chk-checkbox-selection" label="可导入正式参数" items={params.map(param => ({
@@ -320,6 +344,7 @@ export default function ReuseOfficialEventDialog({
           </div>
         </div>
 
+        {hasFailedChosen && <p role="status" className="text-xs text-destructive">已选事件中存在参数加载失败项，请点击对应事件重试，或取消勾选该事件。</p>}
         <DialogFooter>
           <Button
             variant="outline"
@@ -334,7 +359,7 @@ export default function ReuseOfficialEventDialog({
             size="sm"
             className="h-8 rounded-full"
             onClick={handleReuse}
-            disabled={!Object.keys(chosen).length || saving}
+            disabled={!Object.keys(chosen).length || saving || paramsBlocked}
           >
             {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <GitBranch className="h-3.5 w-3.5" />}
             {saving ? progress : `确认复用 ${Object.keys(chosen).length} 个事件`}

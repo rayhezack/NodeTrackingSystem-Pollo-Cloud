@@ -1,0 +1,36 @@
+import { defineTheme } from '@astryxdesign/core/theme';
+
+export const reviewTheme = defineTheme({
+  name: 'pollo-review',
+  tokens: {
+    '--color-accent': 'var(--primary)',
+    '--color-accent-muted': 'var(--accent)',
+    '--color-on-accent': 'var(--primary-foreground)',
+    '--color-text-accent': 'var(--primary)',
+    '--color-icon-accent': 'var(--primary)',
+    '--color-neutral': 'var(--secondary)',
+    '--color-background-muted': 'var(--muted)',
+    '--color-icon-primary': 'var(--foreground)',
+    '--color-icon-secondary': 'var(--muted-foreground)',
+    '--font-family-body': 'var(--font-sans)',
+    '--font-family-heading': 'var(--font-sans)',
+    '--font-family-code': 'var(--font-mono)',
+    '--text-body-size': 'var(--text-sm)',
+    '--text-label-size': 'var(--text-sm)',
+    '--text-code-size': 'var(--text-sm)',
+    '--text-supporting-size': 'var(--text-xs)',
+    '--text-heading-4-size': 'var(--text-sm)',
+    '--color-background-body': 'var(--card)',
+    '--color-background-surface': 'var(--card)',
+    '--color-text-primary': 'var(--foreground)',
+    '--color-text-secondary': 'var(--muted-foreground)',
+    '--color-border': 'var(--border)',
+    '--radius-container': 'var(--radius)',
+  },
+  components: {
+    button: { base: { borderRadius: 'var(--radius-full)' } },
+    'segmented-control': { base: { borderRadius: 'var(--radius-full)' } },
+    'segmented-control-item': { base: { borderRadius: 'var(--radius-full)' }, selected: { color: 'var(--primary)' } },
+    'text-input': { base: { borderRadius: 'var(--radius-full)' } },
+  },
+});

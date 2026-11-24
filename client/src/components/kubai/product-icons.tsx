@@ -1,0 +1,28 @@
+import { KubaiIcon } from './KubaiIcon';
+import type { ComponentProps } from 'react';
+
+type Props = Omit<ComponentProps<typeof KubaiIcon>, 'name'>;
+export const BarChart3 = (props: Props) => <KubaiIcon {...props} name="图表" />;
+export const ClipboardList = (props: Props) => <KubaiIcon {...props} name="剪贴板" />;
+export const History = (props: Props) => <KubaiIcon {...props} name="时钟" />;
+export const LogOut = (props: Props) => <KubaiIcon {...props} name="退出" />;
+export const Search = (props: Props) => <KubaiIcon {...props} name="搜索" />;
+export const ShieldCheck = (props: Props) => <KubaiIcon {...props} name="盾牌" />;
+export const FileSearch = (props: Props) => <KubaiIcon {...props} name="搜索" />;
+export const FileCheck2 = (props: Props) => <KubaiIcon {...props} name="剪贴板" />;
+export const ExternalLink = (props: Props) => <KubaiIcon {...props} name="快捷方式" />;
+export const RefreshCw = (props: Props) => <KubaiIcon {...props} name="同步" />;
+export const Sparkles = (props: Props) => <KubaiIcon {...props} name="灯泡" />;
+export const Upload = (props: Props) => <KubaiIcon {...props} name="上传" />;
+export const ImageIcon = (props: Props) => <KubaiIcon {...props} name="照片" />;
+export const Database = (props: Props) => <KubaiIcon {...props} name="书本" />;
+export const Save = (props: Props) => <KubaiIcon {...props} name="文件夹" />;
+export const Wrench = (props: Props) => <KubaiIcon {...props} name="设置" />;
+export const Copy = (props: Props) => <KubaiIcon {...props} name="复制" />;
+export const ClipboardCopy = (props: Props) => <KubaiIcon {...props} name="剪贴板" />;
+export const Inbox = (props: Props) => <KubaiIcon {...props} name="邮件" />;
+export const GitBranch = (props: Props) => <KubaiIcon {...props} name="标签组" />;
+export const Trash2 = (props: Props) => <KubaiIcon {...props} name="回收站" />;
+export const Edit = (props: Props) => <KubaiIcon {...props} name="编辑" />;
+export const Eye = (props: Props) => <KubaiIcon {...props} name="眼睛" />;
+export const LockKeyhole = (props: Props) => <KubaiIcon {...props} name="锁" />;

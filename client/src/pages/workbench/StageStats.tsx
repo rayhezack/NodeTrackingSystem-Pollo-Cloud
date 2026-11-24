@@ -1,5 +1,6 @@
+import { RefreshCw } from '@client/src/components/kubai/product-icons';
 import type { ReactNode } from 'react';
-import { RefreshCw, AlertCircle } from 'lucide-react';
+import { AlertCircle } from 'lucide-react';
 import { Button } from '@client/src/components/ui/button';
 import { Skeleton } from '@client/src/components/ui/skeleton';
 import type { StageStat } from '@shared/api.interface';

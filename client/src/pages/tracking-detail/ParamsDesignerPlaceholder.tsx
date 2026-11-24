@@ -1,4 +1,5 @@
-import { Wrench } from 'lucide-react';
+import { Wrench } from '@client/src/components/kubai/product-icons';
+
 
 const ParamsDesignerPlaceholder = () => {
   return (

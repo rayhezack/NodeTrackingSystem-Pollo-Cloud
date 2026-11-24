@@ -1,6 +1,7 @@
+import { Wrench, Copy, Trash2 } from '@client/src/components/kubai/product-icons';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { logger } from '@client/src/lib/logger';
-import { Plus, AlertCircle, Wrench, Loader2, Copy, Trash2 } from 'lucide-react';
+import { Plus, AlertCircle, Loader2 } from 'lucide-react';
 import { Button } from '@client/src/components/ui/button';
 import { toast } from 'sonner';
 import {

@@ -1,6 +1,7 @@
+import { Save } from '@client/src/components/kubai/product-icons';
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
-import { Loader2, Plus, Save } from 'lucide-react';
+import { Loader2, Plus } from 'lucide-react';
 import {
   Dialog,
   DialogContent,

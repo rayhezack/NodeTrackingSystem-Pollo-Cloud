@@ -442,6 +442,24 @@ describe('AI 埋点草稿', () => {
     })], 'actor_1', undefined);
   });
 
+  it('writes only the chosen parameters, including an explicit event-only selection', async () => {
+    for (const selected of [['entry_source', 'order_id'], []]) {
+      const { service, tracking } = createFixture();
+      const { draft } = await service.generateDraft('app:rec_1', { actorId: 'actor_1' });
+      const event = draft.events[0];
+      event.params = ['entry_source', 'order_id', 'channel'].map((paramName) => ({ ...event.params[0], paramName }));
+      await service.applyDraft('app:rec_1', draft.id, { actorId: 'actor_1', selectedEventClientIds: [event.clientId], selectedParamNamesByEvent: { [event.clientId]: selected } });
+      expect(tracking.applyAiDraftEvents.mock.calls[0][1][0].params.map((param: { paramName: string }) => param.paramName)).toEqual(selected);
+    }
+  });
+
+  it('rejects unknown parameters before entering the write service', async () => {
+    const { service, tracking } = createFixture();
+    const { draft } = await service.generateDraft('app:rec_1', { actorId: 'actor_1' });
+    await expect(service.applyDraft('app:rec_1', draft.id, { actorId: 'actor_1', selectedParamNamesByEvent: { [draft.events[0].clientId]: ['unknown'] } })).rejects.toThrow('所选参数不在当前草稿');
+    expect(tracking.applyAiDraftEvents).not.toHaveBeenCalled();
+  });
+
   it('已有事件时必须新增同需求事件，不能覆盖当前事件', async () => {
     const existing = {
       recordId: 'app:rec_1',

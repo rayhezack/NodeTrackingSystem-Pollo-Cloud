@@ -34,7 +34,7 @@ export async function readAiGenerationStream(
     catch { throw new Error('AI 生成连接返回异常，请重试'); }
     if (payload.type === 'error') throw new Error(payload.message || 'AI 生成失败，请重试');
     if (payload.type === 'progress') { progress = payload; onProgress(payload); }
-    if (payload.type === 'heartbeat' && progress) onProgress({ ...progress, elapsedMs: payload.elapsedMs });
+    if (payload.type === 'heartbeat' && progress) onProgress({ stage: progress.stage, message: progress.message, completed: progress.completed, total: progress.total, elapsedMs: payload.elapsedMs });
     if (payload.type === 'result') {
       if (!payload.data?.draft) throw new Error('AI 生成接口返回异常，请重试');
       result = payload.data;

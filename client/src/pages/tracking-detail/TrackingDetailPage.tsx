@@ -1,8 +1,9 @@
+import { Trash2 } from '@client/src/components/kubai/product-icons';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { logger } from '@client/src/lib/logger';
 import { useCurrentUser } from '@client/src/hooks/use-current-user';
-import { ArrowLeft, AlertCircle, Loader2, Trash2 } from 'lucide-react';
+import { ArrowLeft, AlertCircle, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@client/src/components/ui/button';
 import {

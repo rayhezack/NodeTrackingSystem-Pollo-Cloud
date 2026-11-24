@@ -13,5 +13,11 @@
     "FEISHU_OAUTH_REDIRECT_URI": "https://app-tracking-management.pollocloud.com/api/tracking/ai/feishu-auth/callback",
     "TRACKING_APP_URL": "https://app-tracking-management.pollocloud.com"
   },
-  "manageButton": false
+  "manageButton": false,
+  "cron": [
+    {
+      "schedule": "*/5 * * * *",
+      "path": "/api/cron/ai-jobs"
+    }
+  ]
 }
