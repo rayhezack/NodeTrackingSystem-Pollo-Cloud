@@ -104,4 +104,29 @@ describe('D1 cutover and durable Base synchronization', () => {
     const run=(await listSyncRuns(DB))[0];expect(run.status).toBe('blocked');expect(run.completed).toBe(0);
   });
 
+  it('groups queued/running and failed/blocked tasks without losing filtered pagination totals', async () => {
+    const DB = database();
+    await ensureRecordStore(DB);
+    const store = new D1RecordStore(DB);
+    await store.create('webParamDetail', Array.from({ length: 54 }, (_, index) => ({ 参数名: `parameter_${index}` })));
+    await store.commit();
+    const id = await startSyncRun(DB, 'manual');
+    const jobs = (await DB.prepare('SELECT id FROM tracking_sync_outbox ORDER BY id').all<{ id: number }>()).results;
+    await DB.batch(jobs.map((job, index) => DB.prepare('UPDATE tracking_sync_run_items SET status=? WHERE run_id=? AND job_id=?')
+      .bind(index < 13 ? 'pending' : index < 27 ? 'running' : index < 36 ? 'failed' : index < 44 ? 'blocked' : 'completed', id, job.id)));
+    const active = await syncRunDetail(DB, id, 0, 'active');
+    expect(active?.totalItems).toBe(27);
+    expect(active?.items).toHaveLength(25);
+    expect(active?.items.every(item => ['pending', 'running'].includes(item.status))).toBe(true);
+    expect((await syncRunDetail(DB, id, 1, 'active'))?.items).toHaveLength(2);
+    const failed = await syncRunDetail(DB, id, 0, 'failed');
+    expect(failed?.totalItems).toBe(17);
+    expect(new Set(failed?.items.map(item => item.status))).toEqual(new Set(['failed', 'blocked']));
+    const completed = await syncRunDetail(DB, id, 0, 'completed');
+    expect(completed?.totalItems).toBe(10);
+    expect((active?.totalItems || 0) + (failed?.totalItems || 0) + (completed?.totalItems || 0))
+      .toBe((await syncRunDetail(DB, id))?.totalItems);
+    await expect(syncRunDetail(DB, id, 0, 'invalid')).rejects.toThrow('筛选');
+  });
+
 });

@@ -3,10 +3,11 @@ import {
   recordCellText,
   type AtomicDatabase,
 } from './d1-record-store';
-import type {
-  DataSyncRun,
-  DataSyncRunDetail,
-  DataSyncRunItem,
+import {
+  DATA_SYNC_TASK_FILTER_LABELS,
+  type DataSyncRun,
+  type DataSyncRunDetail,
+  type DataSyncRunItem,
 } from '../shared/api.interface';
 
 const initialized = new WeakMap<object, Promise<void>>();
@@ -176,15 +177,28 @@ export async function syncRunDetail(
   if (
     !Number.isSafeInteger(page) ||
     page < 0 ||
-    !['all', 'pending', 'running', 'completed', 'failed', 'blocked'].includes(
-      status,
-    )
+    ![
+      ...Object.keys(DATA_SYNC_TASK_FILTER_LABELS),
+      'pending',
+      'running',
+      'blocked',
+    ].includes(status)
   )
     throw new Error('任务筛选参数不正确');
   const run = (await listSyncRuns(db)).find((item) => item.id === id);
   if (!run) return null;
-  const filter = status === 'all' ? '' : ' AND i.status=?';
-  const bindings = status === 'all' ? [id] : [id, status];
+  const states =
+    status === 'all'
+      ? []
+      : status === 'active'
+        ? ['pending', 'running']
+        : status === 'failed'
+          ? ['failed', 'blocked']
+          : [status];
+  const filter = states.length
+    ? ` AND i.status IN (${states.map(() => '?').join(',')})`
+    : '';
+  const bindings = [id, ...states];
   const result = await db
     .prepare(
       `SELECT i.job_id AS jobId,i.instance,i.record_id AS recordId,i.operation,i.status,i.started_at AS startedAt,i.finished_at AS finishedAt,i.attempts,i.error,o.payload,r.fields AS recordFields

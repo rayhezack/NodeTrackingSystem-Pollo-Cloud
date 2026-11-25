@@ -1,5 +1,5 @@
 import { tableNames } from './sync-table-labels';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import {
   Check,
   ChevronDown,
@@ -20,10 +20,11 @@ import {
   SelectValue,
 } from '@client/src/components/ui/select';
 import { RefreshCw } from '@client/src/components/kubai/product-icons';
-import type {
-  DataSyncRun,
-  DataSyncRunDetail,
-  DataSyncRunItem,
+import {
+  DATA_SYNC_TASK_FILTER_LABELS,
+  type DataSyncRun,
+  type DataSyncRunDetail,
+  type DataSyncRunItem,
 } from '@shared/api.interface';
 
 const labels = {
@@ -44,7 +45,19 @@ const colors = {
 const duration = (start: number, end: number) =>
   `${Math.floor(Math.max(0, end - start) / 60000)}:${String(Math.floor(Math.max(0, end - start) / 1000) % 60).padStart(2, '0')}`;
 
-export function SyncTaskMonitor({ runs }: { runs: DataSyncRun[] }) {
+interface SyncTaskMonitorProps {
+  runs: DataSyncRun[];
+  actions: ReactNode;
+  summary: ReactNode;
+  children?: ReactNode;
+}
+
+export function SyncTaskMonitor({
+  runs,
+  actions,
+  summary,
+  children,
+}: SyncTaskMonitorProps) {
   const [selected, setSelected] = useState('');
   const [filter, setFilter] = useState('all');
   const [page, setPage] = useState(0);
@@ -74,13 +87,12 @@ export function SyncTaskMonitor({ runs }: { runs: DataSyncRun[] }) {
     return () => clearInterval(timer);
   }, [run?.status]);
   useEffect(() => setInspected(null), [id, page, filter]);
-  if (!run) return null;
-  const finished = run.completed + run.failed;
+  const finished = (run?.completed || 0) + (run?.failed || 0);
   const groups = [
-    { state: 'completed', count: run.completed },
-    { state: 'failed', count: run.failed },
-    { state: 'running', count: run.running },
-    { state: 'pending', count: run.pending },
+    { state: 'completed', count: run?.completed || 0 },
+    { state: 'failed', count: run?.failed || 0 },
+    { state: 'running', count: run?.running || 0 },
+    { state: 'pending', count: run?.pending || 0 },
   ] as const;
   const activeItem =
     inspected &&
@@ -93,31 +105,42 @@ export function SyncTaskMonitor({ runs }: { runs: DataSyncRun[] }) {
       <header className="flex flex-wrap items-center gap-3 p-5">
         <RefreshCw className="size-7" />
         <div className="mr-auto">
-          <h2 className="text-sm font-semibold">Task Monitor</h2>
-          <p className="mt-1 text-xs text-muted-foreground">
-            数据同步 · {run.total} 条任务 ·{' '}
-            {run.trigger === 'manual' ? '手动启动' : '自动启动'}
-          </p>
+          <h2 className="text-sm font-semibold">同步任务</h2>
+          <div className="mt-2 flex flex-wrap gap-4 text-xs text-muted-foreground">
+            {summary}
+          </div>
         </div>
-        <time className="font-mono text-sm">
-          {duration(run.startedAt, run.finishedAt || now)}
-        </time>
-        <span
-          className={`rounded-md px-2 py-1 text-xs ${run.status === 'completed' ? 'bg-emerald-50 text-emerald-700' : run.status === 'blocked' ? 'bg-amber-50 text-amber-800' : 'bg-primary-soft text-primary'}`}
-        >
-          {labels[run.status]}
-        </span>
+        {run && (
+          <div className="flex items-center gap-3">
+            <time className="font-mono text-sm">
+              {duration(run.startedAt, run.finishedAt || now)}
+            </time>
+            <span
+              className={`rounded-md px-2 py-1 text-xs ${run.status === 'completed' ? 'bg-emerald-50 text-emerald-700' : run.status === 'blocked' || run.status === 'failed' ? 'bg-red-50 text-destructive' : 'bg-primary-soft text-primary'}`}
+            >
+              {run.status === 'blocked' ? '失败' : labels[run.status]}
+            </span>
+          </div>
+        )}
+        {actions}
         <Button
           variant="ghost"
           size="icon"
           aria-label={expanded ? '收起同步监控' : '展开同步监控'}
           aria-expanded={expanded}
+          disabled={!run}
           onClick={() => setExpanded(!expanded)}
         >
           {expanded ? <ChevronUp /> : <ChevronDown />}
         </Button>
       </header>
-      {expanded && (
+      {children && <div className="px-5 pb-5">{children}</div>}
+      {!run && (
+        <p className="border-t border-border p-5 text-sm text-muted-foreground">
+          暂无同步记录
+        </p>
+      )}
+      {expanded && run && (
         <div className="space-y-4 border-t border-border p-5">
           <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
             <span>
@@ -157,9 +180,7 @@ export function SyncTaskMonitor({ runs }: { runs: DataSyncRun[] }) {
             {groups.map((group) => (
               <span key={group.state} className="flex items-center gap-1.5">
                 <i className={`size-2 rounded-full ${colors[group.state]}`} />
-                {group.state === 'failed'
-                  ? '失败/阻塞'
-                  : labels[group.state]}{' '}
+                {group.state === 'failed' ? '失败' : labels[group.state]}{' '}
                 {group.count}
               </span>
             ))}
@@ -179,7 +200,7 @@ export function SyncTaskMonitor({ runs }: { runs: DataSyncRun[] }) {
                 {runs.map((item) => (
                   <SelectItem key={item.id} value={item.id}>
                     {new Date(item.startedAt).toLocaleString('zh-CN')} ·{' '}
-                    {labels[item.status]}
+                    {item.status === 'blocked' ? '失败' : labels[item.status]}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -198,22 +219,13 @@ export function SyncTaskMonitor({ runs }: { runs: DataSyncRun[] }) {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">全部任务</SelectItem>
-                {Object.entries(labels)
-                  .filter(([key]) =>
-                    [
-                      'pending',
-                      'running',
-                      'completed',
-                      'failed',
-                      'blocked',
-                    ].includes(key),
-                  )
-                  .map(([key, label]) => (
+                {Object.entries(DATA_SYNC_TASK_FILTER_LABELS).map(
+                  ([key, label]) => (
                     <SelectItem key={key} value={key}>
                       {label}
                     </SelectItem>
-                  ))}
+                  ),
+                )}
               </SelectContent>
             </Select>
           </div>

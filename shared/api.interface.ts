@@ -813,6 +813,13 @@ export interface DataSyncStatus {
   runs?: DataSyncRun[];
 }
 
+export const DATA_SYNC_TASK_FILTER_LABELS = {
+  all: '全部',
+  active: '进行中',
+  completed: '已完成',
+  failed: '失败',
+} as const;
+
 export interface DataSyncRun {
   id: string;
   trigger: 'manual' | 'automatic';
