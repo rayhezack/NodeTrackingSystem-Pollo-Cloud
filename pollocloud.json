@@ -24,5 +24,125 @@
       "schedule": "*/5 * * * *",
       "path": "/api/cron/data-sync"
     }
-  ]
+  ],
+  "agent": {
+    "summary": "查询正式埋点及整份需求上下文（D1 当前已保存数据，只读）",
+    "guide": "skills/pollo-tracking-context/SKILL.md",
+    "discoverable": false,
+    "operations": [
+      {
+        "name": "search_official_events",
+        "description": "搜索正式事件目录；默认只查已上线，availability=all 含待开发，返回分页候选",
+        "method": "GET",
+        "path": "/api/context/search_official_events",
+        "params": {
+          "source": {
+            "type": "string",
+            "enum": [
+              "web",
+              "app"
+            ],
+            "required": true,
+            "description": "明确指定端，不能合并同名 Web/App 定义"
+          },
+          "keyword": {
+            "type": "string"
+          },
+          "availability": {
+            "type": "string",
+            "enum": [
+              "live",
+              "all"
+            ]
+          },
+          "category": {
+            "type": "string"
+          },
+          "pageSize": {
+            "type": "integer"
+          },
+          "pageToken": {
+            "type": "string"
+          },
+          "expectedSpecVersion": {
+            "type": "string",
+            "description": "已持有的数据指纹；变化时返回 409"
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "json",
+              "markdown"
+            ]
+          }
+        }
+      },
+      {
+        "name": "get_event_context",
+        "description": "获取单个正式事件的完整参数、公共属性、枚举及缺失项；使用搜索返回的 evtId 或 recordId",
+        "method": "GET",
+        "path": "/api/context/get_event_context",
+        "params": {
+          "source": {
+            "type": "string",
+            "enum": [
+              "web",
+              "app"
+            ],
+            "required": true,
+            "description": "明确指定端，不能合并同名 Web/App 定义"
+          },
+          "evtId": {
+            "type": "string"
+          },
+          "recordId": {
+            "type": "string"
+          },
+          "expectedSpecVersion": {
+            "type": "string",
+            "description": "已持有的数据指纹；变化时返回 409"
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "json",
+              "markdown"
+            ]
+          }
+        }
+      },
+      {
+        "name": "get_request_context",
+        "description": "获取需求全部事件和参数及当前正式参考；recordId 可为 App 需求链接或带端 ID，非历史评审快照",
+        "method": "GET",
+        "path": "/api/context/get_request_context",
+        "params": {
+          "source": {
+            "type": "string",
+            "enum": [
+              "web",
+              "app"
+            ],
+            "required": true,
+            "description": "明确指定端，不能合并同名 Web/App 定义"
+          },
+          "recordId": {
+            "type": "string",
+            "required": true
+          },
+          "expectedSpecVersion": {
+            "type": "string",
+            "description": "已持有的数据指纹；变化时返回 409"
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "json",
+              "markdown"
+            ]
+          }
+        }
+      }
+    ]
+  }
 }

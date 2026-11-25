@@ -711,6 +711,60 @@ export interface OfficialEventContext {
   params: OfficialParam[];
 }
 
+export interface TrackingContextMeta {
+  schemaVersion: 'tracking-context/v1';
+  dataSource: 'd1';
+  scope: 'official-search' | 'official-event' | 'request';
+  snapshotKind: 'current-saved';
+  immutable: false;
+  source: TrackingSource;
+  sourcePath: string;
+  specVersion: string;
+  generatedAt: string;
+  fullRead: true;
+  missing: string[];
+  warnings: string[];
+}
+
+export interface TrackingCommonContext {
+  name: string;
+  type: string;
+  definition: string;
+  scope: string;
+}
+
+export interface TrackingEnumContext {
+  evtId: string;
+  paramName: string;
+  value: string;
+  definition: string;
+  status: string;
+}
+
+export interface SearchTrackingContextResponse extends GetOfficialEventsResponse {
+  meta: TrackingContextMeta;
+}
+
+export interface OfficialTrackingContextResponse extends OfficialEventContext {
+  meta: TrackingContextMeta;
+  commonProperties: TrackingCommonContext[];
+  enums: TrackingEnumContext[];
+}
+
+export interface RequestTrackingContextResponse {
+  meta: TrackingContextMeta;
+  requestId: string;
+  requestName: string;
+  reviewStatus: string;
+  events: {
+    event: Omit<TrackingDetailSnapshot, 'permissions'>;
+    params: ParamDetail[];
+    officialBaseline: OfficialEventContext | null;
+  }[];
+  commonProperties: TrackingCommonContext[];
+  enums: TrackingEnumContext[];
+}
+
 export interface GetOfficialEventsParams {
   source?: TrackingSource;
   keyword?: string;
@@ -756,6 +810,42 @@ export interface DataSyncStatus {
   migration: { index: number; token?: string; count: number } | null;
   errors: { id: number; instance: string; record_id: string; status: string; error: string; attempts: number }[];
   canManage: boolean;
+  runs?: DataSyncRun[];
+}
+
+export interface DataSyncRun {
+  id: string;
+  trigger: 'manual' | 'automatic';
+  status: 'queued' | 'running' | 'completed' | 'blocked' | 'failed';
+  startedAt: number;
+  finishedAt: number | null;
+  total: number;
+  completed: number;
+  failed: number;
+  running: number;
+  pending: number;
+  error: string | null;
+}
+
+export interface DataSyncRunItem {
+  operation: 'create' | 'update' | 'delete' | 'notification';
+  jobId: number;
+  instance: string;
+  recordId: string;
+  label: string;
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'blocked';
+  startedAt: number | null;
+  finishedAt: number | null;
+  attempts: number;
+  error: string | null;
+}
+
+export interface DataSyncRunDetail {
+  run: DataSyncRun;
+  items: DataSyncRunItem[];
+  totalItems: number;
+  page: number;
+  pageSize: number;
 }
 
 /** Official-library status values an admin may set through governance; deprecation goes through a 废弃 requirement instead. */

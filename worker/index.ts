@@ -1,3 +1,6 @@
+import { startSyncRun, syncRunDetail } from './sync-monitor';
+import { readTrackingContext, ContextError } from './tracking-context';
+import { renderTrackingContext } from '../shared/tracking-context-format';
 import { D1RecordStore, StoreConflictError, storeMode, type AtomicDatabase } from './d1-record-store';
 import { syncStatus, importSyncPage, drainSync, reconcileSyncJob } from './data-sync';
 import { createAiJob, getAiJob, listAiJobs, cancelAiJob, pauseAiJob, resumeAiJob, runAiJob, dispatchAiJobs, getAiJobResult } from './ai-jobs';
@@ -93,6 +96,22 @@ const app = {
   async fetch(request: Request, env: WorkerEnv = {}): Promise<Response> {
     const url = new URL(request.url);
 
+    if (url.pathname.startsWith('/api/context/')) {
+      const platformUser = resolvePolloCloudUser(request.headers);
+      if (!platformUser) return json({ message: 'Unauthorized' }, 401);
+      if (request.method !== 'GET') return json({ message: '只读上下文仅支持 GET' }, 405);
+      try {
+        const format = url.searchParams.get('format') || 'json';
+        if (format !== 'json' && format !== 'markdown') return json({ message: 'format 必须为 json 或 markdown' }, 400);
+        const user = await resolveCanonicalIdentity(env, platformUser);
+        const value = await readTrackingContext(env, url.pathname.slice('/api/context/'.length), url.searchParams, user.id, url.origin);
+        if (format === 'json') return json(value);
+        return new Response(renderTrackingContext(value), { headers: { 'Content-Type': 'text/markdown; charset=utf-8', 'Cache-Control': 'no-store' } });
+      } catch (error) {
+        return json({ message: error instanceof Error ? error.message : '上下文读取失败' }, error instanceof ContextError ? error.status : 502);
+      }
+    }
+
     if (url.pathname === '/api/cron/data-sync') {
       if (request.headers.get('x-pollocloud-trigger') !== 'cron') return json({ message: 'Forbidden' }, 403);
       return json(await drainSync(env, 100));
@@ -105,15 +124,19 @@ const app = {
         const activeEnv = env.DB && await storeMode(env.DB) === 'd1' ? { ...env, LOCAL_STORE: new D1RecordStore(env.DB as AtomicDatabase) } : env;
         if (url.pathname.endsWith('/dispatch') && request.method === 'POST') return json(await drainSync(env, 50));
         const permissions = await getPermissionConfig(activeEnv, user.id);
+        const runMatch = url.pathname.match(/^\/api\/data-sync\/runs\/([^/]+)$/);
+        if (request.method === 'GET' && runMatch) {
+          const result = await syncRunDetail(env.DB as AtomicDatabase,runMatch[1],Number(url.searchParams.get('page') || 0),url.searchParams.get('status') || 'all');
+          return result ? json(result) : json({message:'同步运行不存在'},404);
+        }
         if (request.method === 'GET') return json({ ...await syncStatus(env), canManage: permissions.canManage });
         if (request.method !== 'POST') return json({ message: 'Method not allowed' }, 405);
         if (!permissions.canManage) return json({ message: '只有管理员可执行同步' }, 403);
         if (url.pathname.endsWith('/reconcile')) { const body = await request.json() as { jobId: number; baseId: string }; return json(await reconcileSyncJob(env, body.jobId, body.baseId)); }
         if (url.pathname.endsWith('/import')) return json(await importSyncPage(env));
-        if (url.pathname.endsWith('/run')) return json(await drainSync(env, 50));
+        if (url.pathname.endsWith('/run')) return json({runId:await startSyncRun(env.DB as AtomicDatabase,'manual')},202);
         if (url.pathname.endsWith('/retry')) {
-          await env.DB!.prepare("UPDATE tracking_sync_outbox SET status='pending',error=NULL WHERE status='failed'").run();
-          return json({ success: true });
+          return json({runId:await startSyncRun(env.DB as AtomicDatabase,'manual',true)},202);
         }
       } catch (error) { return json({ message: error instanceof Error ? error.message : '同步失败' }, 503); }
     }

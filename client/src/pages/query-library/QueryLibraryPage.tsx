@@ -1,3 +1,5 @@
+import { getOfficialTrackingContext } from '@client/src/api/tracking-context';
+import { renderTrackingContext } from '@shared/tracking-context-format';
 import { ClipboardCopy, Database, RefreshCw } from '@client/src/components/kubai/product-icons';
 import { LiquidToggle } from '@client/src/components/bencho/LiquidToggle';
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -41,6 +43,7 @@ export default function QueryLibraryPage() {
   const [total, setTotal] = useState(0);
   const [params, setParams] = useState<ParamState>({ loading: false, error: null, items: [], total: 0 });
   const [paramKeyword, setParamKeyword] = useState("");
+  const [copyingContext,setCopyingContext] = useState(false);
   const request = useRef(0);
   const selectedRef = useRef<string | null>(null);
   const selected = events.find((event) => event.recordId === selectedId) || null;
@@ -105,9 +108,15 @@ export default function QueryLibraryPage() {
     }
   };
 
-  const copyAll = () => {
-    if (!selected || params.loading || params.error) return;
-    void copy({ event: selected, params: params.items }, "已复制事件及全部正式参数");
+  const copyAll = async () => {
+    if (!selected || params.loading || params.error || copyingContext) return;
+    setCopyingContext(true);
+    try {
+      const context = await getOfficialTrackingContext(selected.source,selected.recordId);
+      await navigator.clipboard.writeText(renderTrackingContext(context));
+      toast.success('已复制完整正式上下文，含公共属性、枚举与版本');
+    } catch (cause) { toast.error(cause instanceof Error ? cause.message : '上下文复制失败'); }
+    finally { setCopyingContext(false); }
   };
 
   return (
@@ -172,7 +181,7 @@ export default function QueryLibraryPage() {
             <div className="border-b border-border px-4 py-4 sm:px-6">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0"><div className="break-all font-mono text-xs text-primary">{selected.evtId}</div><h2 className="mt-1 text-base font-semibold text-foreground">{selected.eventName}</h2></div>
-                <Button size="sm" className="rounded-full" disabled={params.loading || Boolean(params.error)} onClick={copyAll}><ClipboardCopy />复制 AI 上下文</Button>
+                <Button size="sm" className="rounded-full" disabled={params.loading || Boolean(params.error) || copyingContext} onClick={() => void copyAll()}><ClipboardCopy />复制 AI 上下文</Button>
               </div>
               <dl className="mt-4 grid gap-x-6 gap-y-3 text-xs sm:grid-cols-2 xl:grid-cols-4">
                 <Detail label="一级分类" value={selected.category} /><Detail label="端" value={selected.platform} /><Detail label="上线版本" value={selected.version} /><Detail label="状态" value={selected.status} />
@@ -185,7 +194,7 @@ export default function QueryLibraryPage() {
                 <RadialMenu actions={[
                   { key: "event", label: "复制事件", Icon: ClipboardCopy, onSelect: () => void copy(selected, "已复制事件信息") },
                   { key: "params", label: "复制参数", Icon: Check, disabled: params.loading || Boolean(params.error), onSelect: () => void copy(params.items, "已复制正式参数") },
-                  { key: "all", label: "复制全部", Icon: Database, disabled: params.loading || Boolean(params.error), onSelect: copyAll },
+                  { key: "all", label: "复制全部", Icon: Database, disabled: params.loading || Boolean(params.error) || copyingContext, onSelect: () => void copyAll() },
                 ]} />
               </div>
             </div>

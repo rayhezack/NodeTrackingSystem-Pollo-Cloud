@@ -5,10 +5,11 @@ import { logger } from '@client/src/lib/logger';
 import { toast } from 'sonner';
 import { Badge } from '@client/src/components/ui/badge';
 import { Button } from '@client/src/components/ui/button';
-import { getParams, getTrackingDetail, resolveUiImagePreview } from '@client/src/api/tracking';
+import { getParams } from '@client/src/api/tracking';
 import type { ParamDetail, TrackingDetail } from '@shared/api.interface';
 import ParamSpecTable from './param-designer/ParamSpecTable';
-import { buildDevelopmentContext, loadDevelopmentContext } from './development-context';
+import { getRequestTrackingContext } from '@client/src/api/tracking-context';
+import { renderTrackingContext } from '@shared/tracking-context-format';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@client/src/components/ui/dialog';
 import { Input } from '@client/src/components/ui/input';
 import { filterEvents } from './event-navigation.utils';
@@ -87,12 +88,8 @@ const DesignHandoffPanel = ({ detail, actorId, actorLarkId }: DesignHandoffPanel
     setCopying(true);
     setCopyProgress('读取整份需求…');
     try {
-      const context = await loadDevelopmentContext(detail.recordId, {
-        detail: async (id) => (await getTrackingDetail(id, actorId, actorLarkId)).data,
-        params: (id) => getParams(id, true),
-        preview: async (attachment) => (await resolveUiImagePreview({ attachment })).url,
-      }, (done, total) => setCopyProgress(`整理事件 ${done}/${total}…`));
-      const text = buildDevelopmentContext(context.detail, context.events);
+      const context = await getRequestTrackingContext(detail.source,detail.recordId);
+      const text = renderTrackingContext(context);
       try {
         await copyText(text);
         toast.success(`已复制整份需求：${context.events.length} 个事件、${context.events.reduce((sum, event) => sum + event.params.length, 0)} 条参数`);

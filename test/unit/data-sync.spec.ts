@@ -1,6 +1,7 @@
 import { webcrypto } from 'node:crypto';
 import { database } from './sqlite-d1.fixture';
 import { ensureRecordStore, storeMode, D1RecordStore } from '../../worker/d1-record-store';
+import { startSyncRun, listSyncRuns, syncRunDetail } from '../../worker/sync-monitor';
 import { importSyncPage, drainSync } from '../../worker/data-sync';
 import { searchBitableRecordPage, createBitableRecords, updateBitableRecords } from '../../worker/feishu-bitable';
 jest.mock('../../worker/feishu-bitable', () => ({ ...jest.requireActual('../../worker/feishu-bitable'), searchBitableRecordPage: jest.fn(), createBitableRecords: jest.fn(), updateBitableRecords: jest.fn() }));
@@ -64,6 +65,43 @@ describe('D1 cutover and durable Base synchronization', () => {
     expect(createBitableRecords).toHaveBeenCalledTimes(1);
     expect((await DB.prepare('SELECT COUNT(*) AS n FROM tracking_base_mapping').first<{n:number}>())?.n).toBe(2);
     expect((await DB.prepare("SELECT COUNT(*) AS n FROM tracking_sync_outbox WHERE status='synced'").first<{n:number}>())?.n).toBe(2);
+  });
+
+  it('resolves a circular parameter/dictionary dependency by allocating IDs before completing links', async () => {
+    const DB = database(); await ensureRecordStore(DB);
+    await DB.prepare("INSERT INTO tracking_sync_outbox(instance,record_id,payload,created_at) VALUES(?,?,?,?)").bind('webParamDetail','d1_param',JSON.stringify({evt_id:'event',参数名:'kind',枚举字典:['d1_enum']}),1).run();
+    await DB.prepare("INSERT INTO tracking_sync_outbox(instance,record_id,payload,created_at) VALUES(?,?,?,?)").bind('webEnumDictionary','d1_enum',JSON.stringify({evt_id:'event',参数名:'kind',枚举值:'one',关联设计参数:['d1_param']}),2).run();
+    jest.mocked(createBitableRecords).mockResolvedValueOnce([{id:'recParam',record:{}}]).mockResolvedValueOnce([{id:'recEnum',record:{}}]);
+    jest.mocked(updateBitableRecords).mockImplementation(async (_env,_instance,records) => {
+      expect((await DB.prepare('SELECT COUNT(*) AS n FROM tracking_base_mapping').first<{n:number}>())?.n).toBe(2);
+      return records;
+    });
+    expect(await drainSync({DB})).toEqual({processed:2});
+    expect(jest.mocked(createBitableRecords).mock.calls[0][2][0]).not.toHaveProperty('枚举字典');
+    expect(jest.mocked(createBitableRecords).mock.calls[1][2][0]['关联设计参数']).toEqual(['recParam']);
+    expect(jest.mocked(updateBitableRecords).mock.calls[0][2][0].record['枚举字典']).toEqual(['recEnum']);
+    const run=(await listSyncRuns(DB))[0];expect(run.status).toBe('completed');expect(run.completed).toBe(2);
+    const detail=await syncRunDetail(DB,run.id);expect(detail?.items.every(item=>item.status==='completed')).toBe(true);
+  });
+  it('persists a manual run, retains fixed totals across browser loss and records failures separately', async () => {
+    const DB=database();await ensureRecordStore(DB);
+    const store=new D1RecordStore(DB);await store.create('webParamDetail',[{evt_id:'event',参数名:'one'},{evt_id:'event',参数名:'two'}]);await store.commit();
+    const id=await startSyncRun(DB,'manual');expect(await startSyncRun(DB,'manual')).toBe(id);
+    jest.mocked(createBitableRecords).mockResolvedValueOnce([{id:'recOne',record:{}}]);
+    await drainSync({DB},1);
+    let run=(await listSyncRuns(DB)).find(item=>item.id===id)!;expect(run.total).toBe(2);expect(run.completed).toBe(1);expect(run.pending).toBe(1);
+    jest.mocked(createBitableRecords).mockRejectedValueOnce(new Error('uncertain transport failure'));
+    await drainSync({DB},1);
+    run=(await listSyncRuns(DB)).find(item=>item.id===id)!;expect(run.status).toBe('blocked');expect(run.failed).toBe(1);expect(run.completed).toBe(1);
+    const errors=await syncRunDetail(DB,id,0,'failed');expect(errors?.items).toHaveLength(1);expect(errors?.items[0].error).toContain('transport');
+    expect((await syncRunDetail(DB,id,0,'completed'))?.totalItems).toBe(1);
+    await expect(syncRunDetail(DB,id,-1)).rejects.toThrow('筛选');
+  });
+  it('does not create an orphan when a dependency job is missing', async () => {
+    const DB=database();await ensureRecordStore(DB);
+    const store=new D1RecordStore(DB);await store.create('webParamDetail',[{evt_id:'event',关联设计:['d1_missing']}]);await store.commit();
+    await drainSync({DB});expect(createBitableRecords).not.toHaveBeenCalled();
+    const run=(await listSyncRuns(DB))[0];expect(run.status).toBe('blocked');expect(run.completed).toBe(0);
   });
 
 });

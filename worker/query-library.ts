@@ -254,7 +254,7 @@ async function readAllRecords(
   }
 }
 
-function toOfficialEvent(record: BitableRecord, source: TrackingSource): OfficialEvent {
+export function toOfficialEvent(record: BitableRecord, source: TrackingSource): OfficialEvent {
   return {
     recordId: `${source}:${record.id}`,
     source,
@@ -264,6 +264,10 @@ function toOfficialEvent(record: BitableRecord, source: TrackingSource): Officia
     platform: cellText(record.record['端']) || '-',
     version: firstText(record.record['上线版本'], record.record['版本']) || '-',
     status: firstText(record.record['状态'], record.record['正式状态'], record.record['生命周期状态'], record.record['流程阶段']) || '-',
+    lifecycleStatus: cellText(record.record['生命周期状态']),
+    handler: cellText(record.record['处理方']),
+    commonProps: cellText(record.record['公共属性要求']),
+    minVersion: cellText(record.record['最低版本']),
     eventDefinition: cellText(record.record['事件定义']),
     triggerTiming: cellText(record.record['触发时机']),
     metricScenario: cellText(record.record['指标/使用场景']),
