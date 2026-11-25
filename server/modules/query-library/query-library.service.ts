@@ -30,9 +30,6 @@ const APP_OFFICIAL_PARAM_FIELDS = [...OFFICIAL_PARAM_BASE_FIELDS.slice(0, 13), '
 
 const WEB_OFFICIAL_PARAM_FIELDS = [...OFFICIAL_PARAM_BASE_FIELDS.slice(0, 13), 'Web适用性', ...OFFICIAL_PARAM_BASE_FIELDS.slice(13)] as const;
 
-const APP_PARAM_BASE_LINK = 'https://bcn0tgplxp2e.feishu.cn/base/Kgy0b4bvmaJSK8sjQDscUrNJnOf?table=tblEYv9lGZeenbT2';
-const WEB_PARAM_BASE_LINK = 'https://bcn0tgplxp2e.feishu.cn/base/EX4RbTvp9agYNws6PIHcKD20nqf?table=tblNAMKr5S38iXJQ';
-
 const EXCLUDED_OFFICIAL_EVENT_STATUSES = new Set(['已废弃', '待治理']);
 
 interface QueryCacheOptions {
@@ -114,7 +111,6 @@ export class QueryLibraryService {
     }
 
     const evtId = cellText(record.record['evt_id']);
-    const baseLink = cellText(record.record['参数明细入口']) || paramBaseLink(ref.source);
     const records = await this.searchAllRecords(officialParamDetailKey(ref.source), officialParamFields(ref.source));
     const params = records
       .filter((paramRecord) => isOfficialParamForEvent(paramRecord, ref.rawId, evtId))
@@ -123,7 +119,7 @@ export class QueryLibraryService {
       .filter((param) => param.status !== '已废弃')
       .sort((a, b) => a.paramKey.localeCompare(b.paramKey));
 
-    return { items: params, total: params.length, baseLink };
+    return { items: params, total: params.length };
   }
 
   async getEventContexts(events: OfficialEvent[], options: QueryCacheOptions = {}): Promise<OfficialEventContext[]> {
@@ -159,7 +155,6 @@ export class QueryLibraryService {
       category: cellText(record.record['一级分类']),
       platform: cellText(record.record['端']) || '-',
       version: firstText(record.record['上线版本'], record.record['版本']) || '-',
-      paramLink: cellText(record.record['参数明细入口']) || paramBaseLink(source),
       status: firstText(record.record['状态'], record.record['正式状态'], record.record['生命周期状态'], record.record['流程阶段']) || '-',
       eventDefinition: cellText(record.record['事件定义']),
       triggerTiming: cellText(record.record['触发时机']),
@@ -241,9 +236,6 @@ function officialParamFields(source: TrackingSource): readonly string[] {
   return source === 'web' ? WEB_OFFICIAL_PARAM_FIELDS : APP_OFFICIAL_PARAM_FIELDS;
 }
 
-function paramBaseLink(source: TrackingSource): string {
-  return source === 'web' ? WEB_PARAM_BASE_LINK : APP_PARAM_BASE_LINK;
-}
 
 function dedupeOfficialEvents(items: OfficialEvent[]): OfficialEvent[] {
   const map = new Map<string, OfficialEvent>();
@@ -260,7 +252,6 @@ function dedupeOfficialEvents(items: OfficialEvent[]): OfficialEvent[] {
       platform: mergeTextList(existing.platform, item.platform),
       version: firstDisplayText(existing.version, item.version),
       status: firstDisplayText(existing.status, item.status),
-      paramLink: firstDisplayText(existing.paramLink, item.paramLink),
     });
   }
   return Array.from(map.values());

@@ -9,7 +9,6 @@ interface ParamState {
   error: string | null;
   items: OfficialParam[];
   total: number;
-  baseLink?: string;
 }
 
 interface Props {

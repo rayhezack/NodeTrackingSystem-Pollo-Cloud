@@ -701,7 +701,6 @@ export interface OfficialEvent {
   version: string;
   status: string;
   lifecycleStatus?: string;
-  paramLink: string;
   eventDefinition?: string;
   triggerTiming?: string;
   metricScenario?: string;
@@ -748,7 +747,6 @@ export interface OfficialParam {
 export interface GetOfficialParamsResponse {
   items: OfficialParam[];
   total: number;
-  baseLink?: string;
 }
 
 export interface DataSyncStatus {

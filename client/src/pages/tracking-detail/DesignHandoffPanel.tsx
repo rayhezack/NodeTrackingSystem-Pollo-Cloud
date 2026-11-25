@@ -1,4 +1,4 @@
-import { ClipboardList, Copy, ExternalLink } from '@client/src/components/kubai/product-icons';
+import { ClipboardList, Copy } from '@client/src/components/kubai/product-icons';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, Loader2 } from 'lucide-react';
 import { logger } from '@client/src/lib/logger';
@@ -16,7 +16,6 @@ import { Textarea } from '@client/src/components/ui/textarea';
 import UiImageField from './UiImageField';
 import {
   getHandoffEvents,
-  getDesignBaseLinks,
   getHandoffPresentation,
   handoffTextValue,
   type HandoffEvent,
@@ -43,7 +42,6 @@ const DesignHandoffPanel = ({ detail, actorId, actorLarkId }: DesignHandoffPanel
   const selectedEvent = events.find((event) => event.recordId === selectedRecordId) || events[0];
   const selectedDetail = selectedEvent?.detail;
   const selectedEventRecordId = selectedEvent?.recordId;
-  const baseLinks = getDesignBaseLinks(selectedEvent?.source || detail.source);
 
   useEffect(() => {
     if (selectedEvent && selectedEvent.recordId !== selectedRecordId) {
@@ -135,24 +133,6 @@ const DesignHandoffPanel = ({ detail, actorId, actorLarkId }: DesignHandoffPanel
           {copying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Copy className="h-3.5 w-3.5" />}
           {copying ? copyProgress : '复制整份开发说明'}
         </Button>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2 border-y border-border/60 py-3">
-        <Button asChild variant="outline" size="sm" className="h-8 rounded-full">
-          <a href={baseLinks.design} target="_blank" rel="noopener noreferrer">
-            <ExternalLink className="h-3.5 w-3.5" />
-            打开埋点设计表
-          </a>
-        </Button>
-        <Button asChild variant="outline" size="sm" className="h-8 rounded-full">
-          <a href={baseLinks.params} target="_blank" rel="noopener noreferrer">
-            <ExternalLink className="h-3.5 w-3.5" />
-            打开设计参数表
-          </a>
-        </Button>
-        <p className="w-full text-xs text-muted-foreground">
-          按 evt_id「{selectedEvent?.evtId || '未填写'}」查找；需有飞书 Base 访问权限。
-        </p>
       </div>
 
       <Dialog open={Boolean(copyFallback)} onOpenChange={(open) => !open && setCopyFallback('')}>

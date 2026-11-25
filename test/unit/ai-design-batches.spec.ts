@@ -87,7 +87,7 @@ describe('batched event design', () => {
 
   it('repairs a changed formal parameter type once and only counts the validated event', async () => {
     const official: OfficialEvent = { recordId: 'web:template', source: 'web', evtId: 'creation_template_click',
-      eventName: '模板点击', platform: 'Web', version: '1', status: '已上线', paramLink: '', triggerTiming: '点击时' };
+      eventName: '模板点击', platform: 'Web', version: '1', status: '已上线', triggerTiming: '点击时' };
     const library: GovernanceSnapshot = { ...snapshot, events: [official], contexts: [{ event: official, params: [{
       paramKey: 'creation_template_click.button_name', paramName: 'button_name', paramType: 'STRING',
       required: true, requiredRule: '必传', triggerCondition: '', definition: '按钮名', example: 'recreate', status: '正式',
@@ -113,7 +113,7 @@ describe('batched event design', () => {
 
   it('finishes sub_result generation without retrying AI condition drift and preserves it for review', async () => {
     const official: OfficialEvent = { recordId: 'web:sub', source: 'web', evtId: 'sub_result',
-      eventName: '订阅结果', platform: 'Web', version: '1', status: '已上线', paramLink: '' };
+      eventName: '订阅结果', platform: 'Web', version: '1', status: '已上线' };
     const library: GovernanceSnapshot = { ...snapshot, events: [official], contexts: [{ event: official, params: [{
       paramKey: 'sub_result.sub_result', paramName: 'sub_result', paramType: 'STRING',
       required: true, requiredRule: '必传', triggerCondition: '', definition: '订阅结果', example: 'success', status: '正式',

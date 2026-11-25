@@ -4,7 +4,7 @@ import type { OfficialEvent } from '../../shared/api.interface';
 
 const official = (evtId: string, source: 'web' | 'app' = 'web'): OfficialEvent => ({
   recordId: `${source}:${evtId}`, source, evtId, eventName: evtId,
-  platform: source === 'web' ? 'Web' : 'iOS、Android', version: '1', status: '已上线', paramLink: '',
+  platform: source === 'web' ? 'Web' : 'iOS、Android', version: '1', status: '已上线',
 });
 const credentials = { FEISHU_APP_ID: 'test', FEISHU_APP_SECRET: 'test-secret' };
 const json = (data: unknown) => new Response(JSON.stringify(data), { headers: { 'Content-Type': 'application/json' } });

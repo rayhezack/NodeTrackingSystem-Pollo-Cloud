@@ -1,4 +1,4 @@
-import { ClipboardCopy, Database, ExternalLink, RefreshCw } from '@client/src/components/kubai/product-icons';
+import { ClipboardCopy, Database, RefreshCw } from '@client/src/components/kubai/product-icons';
 import { LiquidToggle } from '@client/src/components/bencho/LiquidToggle';
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, Loader2 } from 'lucide-react';
@@ -17,7 +17,6 @@ interface ParamState {
   error: string | null;
   items: OfficialParam[];
   total: number;
-  baseLink?: string;
 }
 
 function statusClass(status: string) {
@@ -179,7 +178,6 @@ export default function QueryLibraryPage() {
                 <Detail label="一级分类" value={selected.category} /><Detail label="端" value={selected.platform} /><Detail label="上线版本" value={selected.version} /><Detail label="状态" value={selected.status} />
                 <Detail label="事件定义" value={selected.eventDefinition} wide /><Detail label="触发时机" value={selected.triggerTiming} wide /><Detail label="指标 / 使用场景" value={selected.metricScenario} wide />
               </dl>
-              {params.baseLink && <a href={params.baseLink} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-1 text-xs text-primary hover:underline">原始 Base <ExternalLink className="h-3 w-3" /></a>}
             </div>
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3 sm:px-6">
               <div className="flex items-baseline gap-2"><h3 className="text-sm font-semibold">正式参数</h3><span className="text-xs text-muted-foreground tabular-nums">{params.loading ? "读取中" : `${params.total} 个`}</span></div>

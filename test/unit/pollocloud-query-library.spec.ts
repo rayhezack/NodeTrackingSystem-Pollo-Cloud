@@ -182,7 +182,7 @@ describe('PolloCloud query library', () => {
         platform: 'App通用',
       }),
     ]);
-    expect(result.baseLink).toContain('tblEYv9lGZeenbT2');
+    expect(result).not.toHaveProperty('baseLink');
     expect(JSON.parse(fetchMock.mock.calls[2][1].body)).toEqual(expect.objectContaining({ view_id: 'vewiUagCFI' }));
     expect(JSON.parse(fetchMock.mock.calls[2][1].body).filter).toEqual({
       conjunction: 'or', conditions: [

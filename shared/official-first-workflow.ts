@@ -52,7 +52,7 @@ export async function readGovernanceSnapshot(
     eventName: cell(row.record['事件中文名']), category: cell(row.record['一级分类']),
     platform: cell(row.record['端']), version: cell(row.record['上线版本']),
     status: cell(row.record['状态']), lifecycleStatus: cell(row.record['生命周期状态']),
-    paramLink: cell(row.record['参数明细入口']), eventDefinition: cell(row.record['事件定义']),
+    eventDefinition: cell(row.record['事件定义']),
     handler: cell(row.record['处理方']), commonProps: cell(row.record['公共属性要求']), minVersion: cell(row.record['最低版本']),
     triggerTiming: cell(row.record['触发时机']), metricScenario: cell(row.record['指标/使用场景']),
   })).filter((event) => event.evtId);

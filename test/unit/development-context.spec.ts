@@ -52,7 +52,7 @@ describe('complete development context', () => {
       detail: async () => root, params: async () => ({ items: [], total: 0 }), preview: async () => { throw Error('expired'); },
     });
     expect(context.events[0].images[0]).toEqual({ attachment: expect.objectContaining({ file_token: 'token' }), previewUrl: null });
-    expect(buildDevelopmentContext(root, context.events)).toContain('请通过 Base 查看');
+    expect(buildDevelopmentContext(root, context.events)).toContain('请在 App 需求详情中查看或补充素材');
   });
 
   it('preserves multiline content, every parameter field, review and deleted parameters inside valid JSON', () => {
@@ -68,7 +68,8 @@ describe('complete development context', () => {
     expect(payload.events[0].reviewFields.评审意见).toBe('不能重复上报');
     expect(payload.events[0].designFields.事件定义).toBe(root.designFields.事件定义);
     expect(payload.events[0]).not.toHaveProperty('permissions');
-    expect(payload.events[0].baseLinks.params).toContain('tblMaw89yVi68YY6');
+    expect(payload.events[0]).not.toHaveProperty('baseLinks');
+    expect(text).not.toContain('feishu.cn/base/');
     expect(text).toContain('没有抓取 PRD 全文');
   });
 });

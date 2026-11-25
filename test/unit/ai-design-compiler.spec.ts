@@ -3,7 +3,7 @@ import { enforceGovernance, type GovernanceSnapshot, type ReusePlan } from '../.
 import type { AiTrackingDraftEvent, OfficialEvent, OfficialParam } from '../../shared/api.interface';
 
 const official: OfficialEvent = { recordId: 'web:sub', source: 'web', evtId: 'sub_result', eventName: '订阅结果',
-  platform: 'Web', version: '1', status: '已上线', paramLink: '', eventDefinition: '业务订阅结果', triggerTiming: '' };
+  platform: 'Web', version: '1', status: '已上线', eventDefinition: '业务订阅结果', triggerTiming: '' };
 const param: OfficialParam = { paramKey: 'sub_result.sub_result', paramName: 'sub_result', paramType: 'STRING',
   required: true, requiredRule: '条件必传', triggerCondition: '订阅结果返回时', definition: '结果', example: 'success',
   enumRange: 'success', platform: 'Web通用', status: '正式' };

@@ -155,7 +155,6 @@ describe('正式查询库参数读取', () => {
         platform: 'iOS、Android',
         version: '1.0.0',
         status: '已上线',
-        paramLink: '',
       },
       {
         recordId: 'app:rec_event_2',
@@ -165,7 +164,6 @@ describe('正式查询库参数读取', () => {
         platform: 'iOS、Android',
         version: '1.0.0',
         status: '已上线',
-        paramLink: '',
       },
     ];
 
@@ -231,7 +229,6 @@ describe('正式查询库参数读取', () => {
         platform: 'Web',
         version: '1.0.0',
         status: '已上线',
-        paramLink: '',
       },
       {
         recordId: 'app:rec_app_event',
@@ -241,7 +238,6 @@ describe('正式查询库参数读取', () => {
         platform: 'iOS、Android',
         version: '1.0.0',
         status: '已上线',
-        paramLink: '',
       },
     ];
 

@@ -161,7 +161,7 @@ describe('AI 埋点草稿', () => {
   it('compiles minimal reuse deltas before defaults and records the loaded Skill revision', async () => {
     const { service, queryLibrary, model, tracking } = createFixture();
     const official = { recordId: 'app:sub', source: 'app' as const, evtId: 'sub_result', eventName: '订阅结果',
-      platform: 'iOS、Android', version: '1', status: '已上线', paramLink: '', triggerTiming: '' };
+      platform: 'iOS、Android', version: '1', status: '已上线', triggerTiming: '' };
     queryLibrary.getGovernanceSnapshot.mockResolvedValue({ source: 'app', events: [official], contexts: [{ event: official, params: [{
       paramKey: 'sub_result.sub_result', paramName: 'sub_result', paramType: 'STRING', required: true, requiredRule: '条件必传',
       triggerCondition: '订阅结果返回时', definition: '业务结果', example: 'success', enumRange: 'success', status: '正式',
@@ -430,7 +430,7 @@ describe('AI 埋点草稿', () => {
     const { draft } = await service.generateDraft('app:rec_1', { actorId: 'actor_1' });
     const formal = { recordId: 'app:formal', source: 'app' as const, evtId: draft.events[0].evtId,
       eventName: '正式任务提交', eventDefinition: '通用任务提交', triggerTiming: '点击提交',
-      platform: 'iOS、Android', version: '1.0', status: '已上线', paramLink: '' };
+      platform: 'iOS、Android', version: '1.0', status: '已上线' };
     const snapshot = await queryLibrary.getGovernanceSnapshot();
     snapshot.events = [formal]; snapshot.contexts = [{ event: formal, params: [] }];
     draft.governance!.decisions[0].decision = 'reuse';
