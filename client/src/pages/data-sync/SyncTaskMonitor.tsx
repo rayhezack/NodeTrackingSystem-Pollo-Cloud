@@ -229,6 +229,11 @@ export function SyncTaskMonitor({ runs }: { runs: DataSyncRun[] }) {
             className="max-h-80 space-y-1 overflow-y-auto"
             aria-label="本轮同步任务明细"
           >
+            {query.data && !query.data.items.length && (
+              <p className="py-5 text-center text-xs text-muted-foreground">
+                本轮没有该状态的任务
+              </p>
+            )}
             {query.data?.items.map((item) => (
               <button
                 key={item.jobId}
@@ -236,9 +241,7 @@ export function SyncTaskMonitor({ runs }: { runs: DataSyncRun[] }) {
                 className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm hover:bg-accent ${activeItem?.jobId === item.jobId ? 'bg-accent' : ''}`}
                 onPointerEnter={() => setInspected(item)}
                 onFocus={() => setInspected(item)}
-                onClick={() =>
-                  setInspected(activeItem?.jobId === item.jobId ? null : item)
-                }
+                onClick={() => setInspected(item)}
                 aria-expanded={activeItem?.jobId === item.jobId}
               >
                 <span
