@@ -793,3 +793,41 @@ export interface OfficialGovernanceResponse {
   /** Items whose status and lifecycle already match the requested values; nothing is written for them. */
   unchanged: string[];
 }
+
+/** Data types an admin may set on an official parameter. UNKNOWN and the legacy BOOLEAN spelling are not allowed as targets. */
+export const OFFICIAL_PARAM_GOVERNANCE_TYPES = ['STRING', 'INTEGER', 'NUMBER', 'BOOL', 'ARRAY', 'OBJECT'] as const;
+export const OFFICIAL_PARAM_GOVERNANCE_REQUIRED_RULES = ['必传', '非必传', '条件必传'] as const;
+
+export interface OfficialParamGovernanceItem {
+  evtId: string;
+  paramName: string;
+  dataType?: (typeof OFFICIAL_PARAM_GOVERNANCE_TYPES)[number];
+  requiredRule?: (typeof OFFICIAL_PARAM_GOVERNANCE_REQUIRED_RULES)[number];
+  /** Written to 条件说明; required when requiredRule is 条件必传 and the parameter has no condition yet. */
+  condition?: string;
+  /** Why this change is made (e.g. log evidence). Shown in the preview; not stored on the parameter. */
+  note: string;
+}
+
+export interface OfficialParamGovernanceRequest {
+  source: TrackingSource;
+  dryRun: boolean;
+  items: OfficialParamGovernanceItem[];
+}
+
+export interface OfficialParamGovernanceChange {
+  evtId: string;
+  paramName: string;
+  recordId: string;
+  before: { dataType: string; requiredRule: string; condition: string };
+  after: { dataType: string; requiredRule: string; condition: string };
+  note: string;
+}
+
+export interface OfficialParamGovernanceResponse {
+  source: TrackingSource;
+  dryRun: boolean;
+  changes: OfficialParamGovernanceChange[];
+  /** "evtId.paramName" items that already match the requested values; nothing is written for them. */
+  unchanged: string[];
+}

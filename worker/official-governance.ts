@@ -106,7 +106,7 @@ export function parseGovernanceRequest(body: unknown): OfficialGovernanceRequest
   return { source: source as TrackingSource, dryRun, items };
 }
 
-async function listAllRecords(env: FeishuCredentials, instance: BitableInstanceKey): Promise<BitableRecord[]> {
+export async function listAllRecords(env: FeishuCredentials, instance: BitableInstanceKey): Promise<BitableRecord[]> {
   const records: BitableRecord[] = [];
   let pageToken: string | undefined;
   for (let page = 0; page < 20; page += 1) {
