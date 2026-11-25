@@ -30,6 +30,7 @@ import { getBitableMediaPreviewUrl, uploadBitableImage } from './feishu-files';
 import { resolveCanonicalIdentity } from './pollocloud-identity';
 import { getOfficialEvents, getOfficialParams } from './query-library';
 import { applyOfficialGovernance } from './official-governance';
+import { applyOfficialParamGovernance } from './official-param-governance';
 import {
   getTrackingRecords,
   getTrackingDetail,
@@ -333,7 +334,7 @@ const app = {
       }
     }
 
-    if (url.pathname === '/api/query-library/governance') {
+    if (url.pathname === '/api/query-library/governance' || url.pathname === '/api/query-library/param-governance') {
       if (request.method !== 'POST') return json({ message: 'Method not allowed' }, 405);
       const platformUser = resolvePolloCloudUser(request.headers);
       if (!platformUser) return json({ message: 'Unauthorized' }, 401);
@@ -341,7 +342,10 @@ const app = {
         const user = await resolveCanonicalIdentity(env, platformUser);
         const permissions = await getPermissionConfig(env, user.id);
         if (!permissions.canManage) return json({ message: '只有管理员可以治理正式库' }, 403);
-        return json(await applyOfficialGovernance(env, await request.json(), { name: user.name }));
+        const body = await request.json();
+        return json(url.pathname.endsWith('/param-governance')
+          ? await applyOfficialParamGovernance(env, body, { name: user.name })
+          : await applyOfficialGovernance(env, body, { name: user.name }));
       } catch (error) {
         const status = error instanceof TrackingWriteError ? error.status : error instanceof SyntaxError ? 400 : 502;
         return json({ message: error instanceof Error ? error.message : '正式库治理失败' }, status);
