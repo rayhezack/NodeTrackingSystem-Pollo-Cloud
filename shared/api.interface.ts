@@ -384,6 +384,8 @@ export interface UpdateTrackingRecordResponse {
 }
 
 export interface WorkflowNotificationResult {
+  /** Omitted by older synchronous callers. Queued is not a delivery result. */
+  deliveryStatus?: 'queued' | 'finished';
   planned: boolean;
   configured: boolean;
   recipientCount: number;

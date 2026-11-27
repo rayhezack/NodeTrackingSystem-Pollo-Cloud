@@ -35,10 +35,8 @@ import {
   type StageConfig,
 } from './stage-config';
 import { updateTrackingRecord } from '@client/src/api/tracking';
-import type {
-  TrackingDetail,
-  WorkflowNotificationResult,
-} from '@shared/api.interface';
+import type { TrackingDetail } from '@shared/api.interface';
+import { showCompletionToast } from './stage-completion-toast';
 import ParamDesigner from './param-designer/ParamDesigner';
 import RelatedEventsPanel from './RelatedEventsPanel';
 import DesignHandoffPanel from './DesignHandoffPanel';
@@ -694,45 +692,6 @@ function getOptionsForField(field: StageConfig['fields'][number], detail: Tracki
     return detail.source === 'web' ? WEB_HANDLER_OPTIONS : APP_HANDLER_OPTIONS;
   }
   return field.options || [];
-}
-
-function showCompletionToast(label: string, notification?: WorkflowNotificationResult) {
-  if (!notification) {
-    toast.success(`${label}已标记完成`);
-    return;
-  }
-
-  if (!notification.configured) {
-    toast.warning(`${label}已标记完成，但机器人通知未配置`);
-    return;
-  }
-
-  if (notification.sentCount > 0 && notification.failedCount === 0 && notification.skippedCount === 0) {
-    toast.success(`${label}已标记完成，已通知 ${notification.sentCount} 人`);
-    return;
-  }
-
-  const issue = [
-    ...(notification.errors || []),
-    ...(notification.skippedReasons || []),
-  ][0];
-  if (notification.sentCount > 0) {
-    toast.warning(
-      `${label}已标记完成，通知部分送达：成功 ${notification.sentCount}/${notification.recipientCount}${issue ? `，${issue}` : ''}`,
-    );
-    return;
-  }
-
-  if (notification.failedCount === 0 && notification.skippedCount > 0) {
-    toast.warning(
-      `${label}已标记完成，通知未发送${issue ? `：${issue}` : ''}`,
-    );
-    return;
-  }
-
-  toast.error(
-    `${label}已标记完成，但通知发送失败：成功 0/${notification.recipientCount}${issue ? `，${issue}` : ''}`,
-  );
 }
 
 export default StageForm;

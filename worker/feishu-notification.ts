@@ -27,13 +27,10 @@ export async function sendWorkflowNotification(
   payload: WorkflowTransitionNotification,
   fetchImpl: FetchLike = fetch,
 ): Promise<WorkflowNotificationResult> {
-  if (credentials.LOCAL_STORE) {
-    credentials.LOCAL_STORE.notifications.push({ ...payload });
-    return { planned: true, configured: true, recipientCount: payload.recipients.length, sentCount: 0, failedCount: 0, skippedCount: 0 };
-  }
   const configured = Boolean(credentials.FEISHU_APP_ID?.trim() && credentials.FEISHU_APP_SECRET?.trim());
   const recipients = dedupeRecipients(payload.recipients);
   const result: WorkflowNotificationResult = {
+    deliveryStatus: 'finished',
     planned: true,
     configured,
     recipientCount: recipients.length,
@@ -43,6 +40,12 @@ export async function sendWorkflowNotification(
   };
   if (!configured) return { ...result, skippedCount: recipients.length, skippedReasons: ['Feishu bot credential is not configured'] };
   if (!recipients.length) return { ...result, skippedCount: 1, skippedReasons: ['no recipients'] };
+
+  if (credentials.LOCAL_STORE) {
+    credentials.LOCAL_STORE.notifications.push({ ...payload, recipients });
+    // The request commits this outbox together with the workflow change before replying.
+    return { ...result, deliveryStatus: 'queued' };
+  }
 
   const token = await getFeishuTenantToken(credentials, fetchImpl);
   const errors: string[] = [];
